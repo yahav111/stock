@@ -1,0 +1,42 @@
+/**
+ * Unified Chart Hook
+ * Works for both stocks and crypto
+ */
+import { useQuery } from '@tanstack/react-query';
+import { chartApi, type ChartDataParams } from '../../lib/api/chart.api';
+
+export const chartKeys = {
+  all: ['chart'] as const,
+  chart: (params: ChartDataParams) => [...chartKeys.all, params] as const,
+};
+
+/**
+ * Hook to get unified chart data (stocks or crypto)
+ * Automatically refetches when params change (symbol, range)
+ */
+export function useChart(params: ChartDataParams, enabled = true) {
+  // Calculate staleTime based on range for dynamic updates
+  const staleTime = params.range === '1D' 
+    ? 60 * 60 * 1000      // 1 hour for daily (updates every day)
+    : params.range === '1W'
+    ? 6 * 60 * 60 * 1000  // 6 hours for weekly (updates once a week)
+    : 24 * 60 * 60 * 1000; // 24 hours for monthly (updates once a month)
+
+  return useQuery({
+    queryKey: chartKeys.chart(params),
+    queryFn: () => chartApi.getChartData(params),
+    enabled: !!params.symbol && enabled,
+    staleTime,
+    gcTime: 2 * 60 * 60 * 1000, // 2 hours
+    retry: 1,
+    // Refetch when window regains focus (for real-time updates)
+    refetchOnWindowFocus: true,
+    // Refetch interval based on range
+    refetchInterval: params.range === '1D' 
+      ? 60 * 60 * 1000      // Refetch every hour for daily
+      : params.range === '1W'
+      ? 6 * 60 * 60 * 1000   // Refetch every 6 hours for weekly
+      : false,                // No auto-refetch for monthly
+  });
+}
+

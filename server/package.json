@@ -1,0 +1,48 @@
+{
+  "name": "tradeview-server",
+  "version": "1.0.0",
+  "description": "Financial Dashboard API Server",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "keywords": [
+    "financial",
+    "dashboard",
+    "api",
+    "websocket"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@lucia-auth/adapter-drizzle": "^1.1.0",
+    "axios": "^1.6.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "drizzle-orm": "^0.29.0",
+    "express": "^4.18.2",
+    "lucia": "^3.2.0",
+    "oslo": "^1.2.1",
+    "postgres": "^3.4.0",
+    "ws": "^8.14.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.15",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.10",
+    "drizzle-kit": "^0.20.0",
+    "tsx": "^4.6.0",
+    "typescript": "^5.3.0"
+  }
+}

@@ -1,0 +1,173 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 13% 8%;
+    --foreground: 210 20% 95%;
+
+    --card: 220 13% 10%;
+    --card-foreground: 210 20% 95%;
+
+    --popover: 220 13% 10%;
+    --popover-foreground: 210 20% 95%;
+
+    --primary: 199 89% 48%;
+    --primary-foreground: 210 20% 98%;
+
+    --secondary: 220 13% 16%;
+    --secondary-foreground: 210 20% 95%;
+
+    --muted: 220 13% 18%;
+    --muted-foreground: 215 15% 55%;
+
+    --accent: 220 13% 20%;
+    --accent-foreground: 210 20% 95%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 20% 98%;
+
+    --border: 220 13% 18%;
+    --input: 220 13% 18%;
+    --ring: 199 89% 48%;
+
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-mono antialiased;
+  }
+}
+
+/* TradingView-inspired scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(220 13% 10%);
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(220 13% 25%);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(220 13% 35%);
+}
+
+/* Trading colors */
+.text-bullish {
+  color: #26a69a;
+}
+
+.text-bearish {
+  color: #ef5350;
+}
+
+.bg-bullish {
+  background-color: #26a69a;
+}
+
+.bg-bearish {
+  background-color: #ef5350;
+}
+
+/* Ticker animation */
+.ticker-wrapper {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ticker-content {
+  display: inline-flex;
+  animation: ticker-scroll 30s linear infinite;
+}
+
+.ticker-content:hover {
+  animation-play-state: paused;
+}
+
+/* Chart container */
+.chart-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Glassmorphism effect */
+.glass {
+  background: rgba(26, 28, 35, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Glow effects */
+.glow-green {
+  box-shadow: 0 0 20px rgba(38, 166, 154, 0.3);
+}
+
+.glow-red {
+  box-shadow: 0 0 20px rgba(239, 83, 80, 0.3);
+}
+
+.glow-blue {
+  box-shadow: 0 0 20px rgba(33, 150, 243, 0.3);
+}
+
+/* Card hover effect */
+.trading-card {
+  transition: all 0.3s ease;
+  border: 1px solid transparent;
+}
+
+.trading-card:hover {
+  border-color: rgba(33, 150, 243, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Price change flash animation */
+.price-up {
+  animation: pulse-green 0.5s ease-in-out;
+}
+
+.price-down {
+  animation: pulse-red 0.5s ease-in-out;
+}
+
+@keyframes pulse-green {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: rgba(38, 166, 154, 0.2); }
+}
+
+@keyframes pulse-red {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: rgba(239, 83, 80, 0.2); }
+}
+
+/* Grid pattern background */
+.grid-pattern {
+  background-image: 
+    linear-gradient(rgba(42, 46, 57, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(42, 46, 57, 0.5) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Gradient backgrounds */
+.gradient-dark {
+  background: linear-gradient(135deg, hsl(220, 13%, 8%) 0%, hsl(220, 15%, 5%) 100%);
+}
+
+.gradient-card {
+  background: linear-gradient(145deg, hsl(220, 13%, 12%) 0%, hsl(220, 13%, 8%) 100%);
+}

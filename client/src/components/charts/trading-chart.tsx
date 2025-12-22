@@ -1,0 +1,483 @@
+import { useEffect, useRef, useState } from "react"
+import { createChart, ColorType } from "lightweight-charts"
+import type { IChartApi, ISeriesApi, Time } from "lightweight-charts"
+import { Card, CardHeader, CardTitle, CardContent } from "../ui/card"
+import { Button } from "../ui/button"
+import { Badge } from "../ui/badge"
+import { Clock, Wifi, WifiOff, Loader2, AlertCircle } from "lucide-react"
+import { cn, formatCurrency, formatPercentage } from "../../lib/utils"
+import { useDashboardStore } from "../../stores/dashboard-store"
+import { useChart } from "../../hooks/api"
+import { StockSearch } from "../common/stock-search"
+import type { Timeframe } from "../../types"
+
+interface TradingChartProps {
+  initialSymbol?: string
+  name?: string
+  type?: "candlestick" | "line" | "area"
+  className?: string
+  showSearch?: boolean
+  onSymbolChange?: (symbol: string) => void
+}
+
+// Available timeframes - only daily/weekly available in Polygon Free Tier
+const timeframes: { value: Timeframe; label: string; apiTimespan: 'day' | 'week' | 'month'; limit: number; available: boolean }[] = [
+  { value: "1m", label: "1m", apiTimespan: 'day', limit: 1, available: false },
+  { value: "5m", label: "5m", apiTimespan: 'day', limit: 1, available: false },
+  { value: "15m", label: "15m", apiTimespan: 'day', limit: 1, available: false },
+  { value: "1h", label: "1H", apiTimespan: 'day', limit: 1, available: false },
+  { value: "4h", label: "4H", apiTimespan: 'day', limit: 1, available: false },
+  { value: "1d", label: "1D", apiTimespan: 'day', limit: 30, available: true },
+  { value: "1w", label: "1W", apiTimespan: 'week', limit: 52, available: true },
+]
+
+// Format relative time
+function formatLastUpdate(timestamp: number): string {
+  const now = Date.now()
+  const diff = now - timestamp
+  
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  
+  if (seconds < 10) return "Just now"
+  if (seconds < 60) return `${seconds}s ago`
+  if (minutes < 60) return `${minutes}m ago`
+  if (hours < 24) return `${hours}h ago`
+  return new Date(timestamp).toLocaleDateString()
+}
+
+export function TradingChart({ 
+  initialSymbol = "AAPL",
+  name, 
+  type = "candlestick", 
+  className,
+  showSearch = true,
+  onSymbolChange 
+}: TradingChartProps) {
+  const [symbol, setSymbol] = useState(initialSymbol)
+  const chartContainerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<IChartApi | null>(null)
+  const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Line"> | ISeriesApi<"Area"> | null>(null)
+  const [timeframe, setTimeframe] = useState<Timeframe>("1d")
+  const [chartType, setChartType] = useState(type)
+  const [isChartReady, setIsChartReady] = useState(false)
+  const [lastUpdateDisplay, setLastUpdateDisplay] = useState("")
+
+  // Get current timeframe config
+  const currentTimeframeConfig = timeframes.find(tf => tf.value === timeframe) || timeframes[5]
+
+  // Get real-time stock data from dashboard store (updated via WebSocket)
+  const { stocks, cryptos, isConnected } = useDashboardStore()
+  const stockData = stocks[symbol]
+  const cryptoData = cryptos[symbol]
+
+  // Map timeframe to range for unified chart API
+  const rangeMap: Record<Timeframe, '1D' | '1W' | '1M'> = {
+    '1m': '1D',
+    '5m': '1D',
+    '15m': '1D',
+    '1h': '1D',
+    '4h': '1D',
+    '1d': '1D',
+    '1w': '1W',
+    '1M': '1M',
+  };
+
+  // Use unified chart API (works for both stocks and crypto)
+  const { data: chartData, isLoading: isLoadingHistory, error: historyError } = useChart(
+    {
+      symbol,
+      range: rangeMap[timeframe],
+    },
+    currentTimeframeConfig.available
+  );
+
+  // Extract data from unified response
+  const historyData = chartData?.bars;
+  const apiStockData = chartData ? {
+    symbol: chartData.symbol,
+    price: chartData.bars?.[chartData.bars.length - 1]?.close || 0,
+    change: 0, // Will calculate from bars
+    changePercent: 0,
+    volume: chartData.bars?.[chartData.bars.length - 1]?.volume || 0,
+    timestamp: Date.now(),
+    name: chartData.name,
+  } : null;
+
+  // Debug logging
+  useEffect(() => {
+    if (historyError) {
+      console.log('📊 Chart Debug:', { 
+        symbol, 
+        historyDataLength: historyData?.length, 
+        isLoadingHistory, 
+        historyError: String(historyError),
+        isChartReady,
+        timeframeAvailable: currentTimeframeConfig.available,
+      })
+    }
+  }, [symbol, historyData, isLoadingHistory, historyError, isChartReady, currentTimeframeConfig.available, chartType])
+
+  // Use WebSocket data first, then API data
+  // For crypto, check cryptos store; for stocks, check stocks store
+  const wsData = chartData?.type === 'crypto' ? cryptoData : stockData;
+  const currentPrice = wsData?.price ?? apiStockData?.price ?? (historyData?.[historyData.length - 1]?.close ?? 0);
+  
+  // Calculate change from first and last bar if available
+  let priceChange = 0;
+  let priceChangePercent = 0;
+  
+  // Try to get from WebSocket data first
+  if (wsData) {
+    if (chartData?.type === 'crypto') {
+      priceChange = (wsData as any).change24h ?? 0;
+      priceChangePercent = (wsData as any).changePercent24h ?? 0;
+    } else {
+      priceChange = (wsData as any).change ?? 0;
+      priceChangePercent = (wsData as any).changePercent ?? 0;
+    }
+  }
+  
+  // Calculate from bars if WebSocket data not available
+  if (historyData && historyData.length > 1 && priceChange === 0) {
+    const firstBar = historyData[0];
+    const lastBar = historyData[historyData.length - 1];
+    priceChange = lastBar.close - firstBar.close;
+    priceChangePercent = (priceChange / firstBar.close) * 100;
+  }
+  
+  const stockName = name || chartData?.name || (wsData as any)?.name || symbol
+  
+  const dataTimestamp = wsData?.timestamp ?? (historyData?.[historyData.length - 1]?.time ? historyData[historyData.length - 1].time * 1000 : Date.now())
+  const dataSource = wsData ? "WebSocket" : chartData ? "API" : "Loading"
+
+  // Handle symbol change
+  const handleSymbolChange = (newSymbol: string) => {
+    if (newSymbol && newSymbol !== symbol) {
+      setSymbol(newSymbol)
+      if (onSymbolChange) onSymbolChange(newSymbol)
+    }
+  }
+
+  // Update last update display
+  useEffect(() => {
+    const updateDisplay = () => {
+      if (dataTimestamp) {
+        setLastUpdateDisplay(formatLastUpdate(dataTimestamp))
+      }
+    }
+    
+    updateDisplay()
+    const interval = setInterval(updateDisplay, 10000)
+    return () => clearInterval(interval)
+  }, [dataTimestamp])
+
+  // Initialize chart
+  useEffect(() => {
+    if (!chartContainerRef.current) return
+
+    try {
+      const container = chartContainerRef.current
+      
+      // Force container to have dimensions
+      const containerWidth = container.clientWidth || 800
+      const containerHeight = container.clientHeight || 400
+      
+      const chart = createChart(container, {
+        width: containerWidth,
+        height: containerHeight,
+        layout: {
+          background: { type: ColorType.Solid, color: "transparent" },
+          textColor: "#787b86",
+        },
+        grid: {
+          vertLines: { color: "#2a2e39" },
+          horzLines: { color: "#2a2e39" },
+        },
+        crosshair: {
+          vertLine: { color: "#9598a1", width: 1, style: 2 },
+          horzLine: { color: "#9598a1", width: 1, style: 2 },
+        },
+        rightPriceScale: { borderColor: "#2a2e39" },
+        timeScale: { borderColor: "#2a2e39", timeVisible: true },
+        handleScale: { mouseWheel: true, pinch: true },
+        handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
+      })
+
+      chartRef.current = chart
+
+      const handleResize = () => {
+        if (chartContainerRef.current && chartRef.current) {
+          chartRef.current.applyOptions({
+            width: chartContainerRef.current.clientWidth,
+            height: chartContainerRef.current.clientHeight,
+          })
+        }
+      }
+
+      window.addEventListener("resize", handleResize)
+      
+      // Initial resize after a small delay to ensure DOM is ready
+      setTimeout(() => {
+        handleResize()
+        setIsChartReady(true)
+      }, 0)
+
+      return () => {
+        window.removeEventListener("resize", handleResize)
+        chart.remove()
+        setIsChartReady(false)
+      }
+    } catch (error) {
+      console.error("❌ Error creating chart:", error)
+    }
+  }, [])
+
+  // Update chart with real historical data
+  useEffect(() => {
+    if (!chartRef.current || !isChartReady) return
+    if (!currentTimeframeConfig.available) return
+
+    try {
+      // Remove old series
+      if (seriesRef.current) {
+        chartRef.current.removeSeries(seriesRef.current)
+        seriesRef.current = null
+      }
+
+      // Wait for data
+      if (!historyData || historyData.length === 0) return
+
+      // Filter out any future dates
+      const now = Math.floor(Date.now() / 1000)
+      const validData = historyData.filter(bar => bar.time <= now)
+      
+      if (validData.length === 0) {
+        console.warn('⚠️ All data filtered out as future dates')
+        return
+      }
+
+      // Transform API data to chart format
+      const chartData = validData.map(bar => {
+        const date = new Date(bar.time * 1000)
+        const dateStr = date.toISOString().split('T')[0]
+        return {
+          time: dateStr as Time,
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+        }
+      })
+
+      const lineData = validData.map(bar => {
+        const date = new Date(bar.time * 1000)
+        const dateStr = date.toISOString().split('T')[0]
+        return {
+          time: dateStr as Time,
+          value: bar.close,
+        }
+      })
+
+      // Add series based on chart type
+      if (chartType === "candlestick") {
+        const series = chartRef.current.addCandlestickSeries({
+          upColor: "#26a69a",
+          downColor: "#ef5350",
+          borderUpColor: "#26a69a",
+          borderDownColor: "#ef5350",
+          wickUpColor: "#26a69a",
+          wickDownColor: "#ef5350",
+        })
+        series.setData(chartData)
+        seriesRef.current = series
+      } else if (chartType === "line") {
+        const series = chartRef.current.addLineSeries({
+          color: "#2196f3",
+          lineWidth: 2,
+        })
+        series.setData(lineData)
+        seriesRef.current = series
+      } else if (chartType === "area") {
+        const series = chartRef.current.addAreaSeries({
+          lineColor: "#2196f3",
+          topColor: "rgba(33, 150, 243, 0.4)",
+          bottomColor: "rgba(33, 150, 243, 0.0)",
+          lineWidth: 2,
+        })
+        series.setData(lineData)
+        seriesRef.current = series
+      }
+
+      // Auto-zoom to show all data with proper margins
+      chartRef.current.timeScale().fitContent()
+      
+      // Set visible range to show only the last 12-15 days for better initial view
+      if (chartData.length > 0) {
+        const lastIndex = chartData.length - 1
+        const daysToShow = Math.min(15, chartData.length) // Show max 15 days initially
+        const firstIndex = Math.max(0, lastIndex - daysToShow + 1)
+        chartRef.current.timeScale().setVisibleLogicalRange({
+          from: firstIndex - 0.5, // Small margin on the left
+          to: lastIndex + 0.5 // Small margin on the right
+        })
+      }
+    } catch (error) {
+      console.error("❌ Error updating chart:", error)
+    }
+  }, [chartType, historyData, isChartReady, currentTimeframeConfig.available])
+
+  return (
+    <Card className={cn("h-full flex flex-col", className)}>
+      <CardHeader className="pb-3 flex-shrink-0 space-y-3">
+        {/* Search bar - TradingView style */}
+        {showSearch && (
+          <div className="flex items-center gap-2">
+            <StockSearch
+              value={symbol}
+              onChange={handleSymbolChange}
+              onSelect={handleSymbolChange}
+              placeholder="Search symbol (e.g. AAPL, TSLA)"
+              className="flex-1 max-w-xs"
+            />
+          </div>
+        )}
+
+        {/* Stock Info Bar - TradingView style */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-baseline gap-4">
+            <div>
+              <CardTitle className="text-2xl font-mono font-bold tracking-tight">{symbol}</CardTitle>
+              {stockName && stockName !== symbol && (
+                <p className="text-xs text-muted-foreground mt-0.5">{stockName}</p>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2">
+              {currentPrice > 0 ? (
+                <>
+                  <span className="text-2xl font-mono font-semibold">{formatCurrency(currentPrice)}</span>
+                  <Badge 
+                    variant={priceChange >= 0 ? "bullish" : "bearish"}
+                    className="text-xs px-2 py-0.5 font-semibold"
+                  >
+                    {priceChange >= 0 ? "+" : ""}{formatPercentage(priceChangePercent)}
+                  </Badge>
+                </>
+              ) : (
+                <span className="text-lg text-muted-foreground">Loading...</span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Chart Type Selector */}
+            <div className="flex rounded-md border border-border overflow-hidden">
+              {(["candlestick", "line", "area"] as const).map((t) => (
+                <Button
+                  key={t}
+                  variant={chartType === t ? "secondary" : "ghost"}
+                  size="sm"
+                  className="rounded-none h-8 px-3 text-xs font-medium"
+                  onClick={() => setChartType(t)}
+                  title={t.charAt(0).toUpperCase() + t.slice(1) + " Chart"}
+                >
+                  {t === "candlestick" ? "🕯️" : t === "line" ? "📈" : "📊"}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+        
+        {/* Timeframe selector and data source indicator - TradingView style */}
+        <div className="flex items-center justify-between pt-2 border-t border-border/50">
+          <div className="flex rounded-md border border-border overflow-hidden">
+            {timeframes.map((tf) => (
+              <Button
+                key={tf.value}
+                variant={timeframe === tf.value ? "secondary" : "ghost"}
+                size="sm"
+                className={cn(
+                  "rounded-none h-8 px-3 text-xs font-medium",
+                  !tf.available && "opacity-50 cursor-not-allowed"
+                )}
+                onClick={() => tf.available && setTimeframe(tf.value)}
+                disabled={!tf.available}
+                title={!tf.available ? "Not available in free tier" : undefined}
+              >
+                {tf.label}
+              </Button>
+            ))}
+          </div>
+
+          {/* Data source indicator - compact */}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {isConnected ? (
+              <Wifi className="w-3.5 h-3.5 text-bullish" />
+            ) : (
+              <WifiOff className="w-3.5 h-3.5 text-destructive" />
+            )}
+            <Clock className="w-3.5 h-3.5" />
+            <span className="font-mono">{lastUpdateDisplay}</span>
+            <Badge variant="secondary" className="text-[10px] px-2 py-0.5 font-medium">
+              {dataSource}
+            </Badge>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="flex-1 p-2 min-h-0" style={{ minHeight: '450px' }}>
+        {/* Stock Not Found Error */}
+        {historyError && historyData?.length === 0 && (
+          <div className="h-full flex flex-col items-center justify-center text-center p-8">
+            <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Stock Not Found</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              We couldn't find chart data for "{symbol}". 
+              <br />
+              Please check the symbol and try again.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Try popular stocks: AAPL, TSLA, MSFT, GOOGL
+            </p>
+          </div>
+        )}
+
+        {/* General Error state */}
+        {historyError && historyData && historyData.length > 0 && (
+          <div className="h-full flex items-center justify-center text-muted-foreground">
+            <AlertCircle className="w-4 h-4 mr-2" />
+            <span>Failed to load latest chart data</span>
+          </div>
+        )}
+
+        {/* Loading state */}
+        {isLoadingHistory && !historyData && (
+          <div className="h-full flex items-center justify-center text-muted-foreground">
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            <span>Loading chart data for {symbol}...</span>
+          </div>
+        )}
+
+        {/* Unavailable timeframe */}
+        {!currentTimeframeConfig.available && (
+          <div className="h-full flex items-center justify-center text-muted-foreground">
+            <AlertCircle className="w-4 h-4 mr-2" />
+            <span>Intraday data not available in free tier. Use 1D or 1W.</span>
+          </div>
+        )}
+
+        {/* Chart container - ALWAYS RENDERED with explicit dimensions */}
+        <div 
+          ref={chartContainerRef} 
+          className="w-full"
+          style={{ 
+            height: '400px',
+            minHeight: '400px',
+            position: 'relative',
+            display: (isLoadingHistory && !historyData) || historyError || !currentTimeframeConfig.available ? 'none' : 'block'
+          }}
+        />
+      </CardContent>
+    </Card>
+  )
+}
