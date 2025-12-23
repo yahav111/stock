@@ -284,6 +284,63 @@ interface PolygonHistoryResponse {
 }
 
 // Get historical stock data (candlestick/OHLC)
+/**
+ * Try to get today's stock data directly from Polygon API
+ * Uses intraday aggregates for today if available
+ */
+async function getTodayStockData(symbol: string): Promise<HistoricalBar | null> {
+  if (!env.POLYGON_API_KEY) return null;
+
+  try {
+    await waitForRateLimit();
+    
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const todayStart = new Date(today);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayBarTime = Math.floor(todayStart.getTime() / 1000);
+    
+    // Try to get today's data using range endpoint
+    // For daily bars, we can try to get today's date range
+    const response = await axios.get(
+      `${POLYGON_BASE_URL}/v2/aggs/ticker/${symbol}/range/1/day/${todayStr}/${todayStr}`,
+      {
+        params: {
+          apiKey: env.POLYGON_API_KEY,
+          adjusted: true,
+        },
+        timeout: 10000,
+      }
+    );
+
+    const results = response.data.results || [];
+    if (results.length > 0) {
+      // Get the most recent result (should be today's bar if available)
+      const todayResult = results[results.length - 1];
+      const bar: HistoricalBar = {
+        time: Math.floor(todayResult.t / 1000), // Convert ms to seconds
+        open: todayResult.o,
+        high: todayResult.h,
+        low: todayResult.l,
+        close: todayResult.c,
+        volume: todayResult.v,
+      };
+      
+      console.log(`✅ Got today's data from Polygon API for ${symbol}: ${todayStr}`);
+      return bar;
+    }
+    
+    return null;
+  } catch (error: unknown) {
+    const axiosError = error as { response?: { status?: number; data?: any } };
+    // Don't log error if it's just that today's data isn't available yet (404 or empty results)
+    if (axiosError.response?.status !== 404 && axiosError.response?.status !== 429) {
+      console.log(`ℹ️ Today's data not available from Polygon API for ${symbol} (this is normal if market hasn't closed)`);
+    }
+    return null;
+  }
+}
+
 export async function getStockHistory(
   symbol: string, 
   timespan: 'day' | 'week' | 'month' = 'day',
@@ -293,23 +350,32 @@ export async function getStockHistory(
   const today = new Date().toISOString().split('T')[0];
   const cacheKey = `history:${symbol}:${timespan}:${limit}:${today}`;
   
-  // Check cache, but also verify it's not stale
+  // Check cache, but also verify it's not stale - must be today or yesterday at most
   const cached = getCached<HistoricalBar[]>(cacheKey, CACHE_TTL_HISTORY);
   if (cached && cached.length > 0) {
-    // Verify the last bar is recent (within last 3 days)
+    // Verify the last bar is today or yesterday (to ensure we have the latest data)
     const lastBarTime = cached[cached.length - 1].time * 1000; // Convert to ms
     const lastBarDate = new Date(lastBarTime).toISOString().split('T')[0];
-    const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000);
-    const threeDaysAgoDate = new Date(threeDaysAgo).toISOString().split('T')[0];
     
-    console.log(`🔍 Cache check for ${symbol}: last bar date=${lastBarDate}, 3 days ago=${threeDaysAgoDate}, today=${today}`);
+    // Calculate yesterday's date (skipping weekends if needed)
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    while (yesterday.getDay() === 0 || yesterday.getDay() === 6) {
+      yesterday.setDate(yesterday.getDate() - 1);
+    }
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
     
-    if (lastBarTime > threeDaysAgo) {
-      console.log(`📦 Cache hit for ${symbol} history (dated cache, last bar: ${lastBarDate})`);
+    console.log(`🔍 Cache check for ${symbol}: last bar date=${lastBarDate}, yesterday=${yesterdayStr}, today=${today}`);
+    
+    // Accept cache if last bar is today or yesterday (most recent trading day)
+    if (lastBarDate === today || lastBarDate === yesterdayStr) {
+      console.log(`📦 Cache hit for ${symbol} history (dated cache, last bar: ${lastBarDate}, cache key includes today: ${today})`);
       return cached;
     } else {
-      console.log(`⚠️ Cache exists but is stale (last bar: ${lastBarDate} is older than ${threeDaysAgoDate}), refetching...`);
-      // Cache is stale, continue to fetch fresh data
+      console.log(`⚠️ Cache exists but is stale (last bar: ${lastBarDate} is not today=${today} or yesterday=${yesterdayStr}), invalidating cache and refetching...`);
+      // Invalidate stale cache
+      cache.delete(cacheKey);
+      // Continue to fetch fresh data
     }
   } else {
     console.log(`📭 No cache found for ${symbol} (key: ${cacheKey}), fetching from API...`);
@@ -327,19 +393,20 @@ export async function getStockHistory(
     const to = new Date();
     const from = new Date();
     
-    // For stocks: find the most recent completed trading day
-    // Stock markets are typically closed on weekends
-    // If today is a weekday, we might want to include today's data if market is open
-    // But for historical data, we'll use yesterday as a safe default
+    // For stocks: use today's date (or most recent trading day if today is weekend)
+    // Stock markets are typically closed on weekends, so if today is weekend, use last weekday
     const now = new Date();
     const currentDay = now.getDay(); // 0 = Sunday, 6 = Saturday
     
-    // Start from yesterday (most recent completed day)
-    to.setDate(to.getDate() - 1);
-    let weekdayAttempts = 0;
-    while ((to.getDay() === 0 || to.getDay() === 6) && weekdayAttempts < 7) {
-      to.setDate(to.getDate() - 1);
-      weekdayAttempts++;
+    // If today is a weekend, go back to the last weekday
+    // Otherwise, use today to include today's data
+    if (to.getDay() === 0 || to.getDay() === 6) {
+      // It's a weekend, find the last weekday
+      let weekdayAttempts = 0;
+      while ((to.getDay() === 0 || to.getDay() === 6) && weekdayAttempts < 7) {
+        to.setDate(to.getDate() - 1);
+        weekdayAttempts++;
+      }
     }
     to.setHours(23, 59, 59, 999);
     
@@ -367,7 +434,7 @@ export async function getStockHistory(
     const currentDate = new Date().toISOString().split('T')[0];
     
     console.log(`📡 Fetching ${symbol} history: ${timespan} from ${fromStr} to ${toStr}`);
-    console.log(`   Today is: ${currentDate}, Requesting up to: ${toStr} (most recent trading day)`);
+    console.log(`   Today is: ${currentDate}, Requesting up to: ${toStr} (including today if trading day)`);
 
     // Fetch data with pagination (Polygon free tier returns limited results per request)
     let allResults: PolygonBarData[] = [];
@@ -435,6 +502,34 @@ export async function getStockHistory(
       console.log(`   Requested range: ${fromStr} to ${toStr}`);
     }
     
+    // Try to get today's data if we're fetching daily bars and today is a trading day
+    if (timespan === 'day') {
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      const isTradingDay = today.getDay() !== 0 && today.getDay() !== 6;
+      
+      if (isTradingDay) {
+        const todayBar = await getTodayStockData(symbol);
+        if (todayBar) {
+          // Check if today's bar already exists in history
+          const todayStart = new Date(today);
+          todayStart.setHours(0, 0, 0, 0);
+          const todayBarTime = Math.floor(todayStart.getTime() / 1000);
+          
+          const existingTodayIndex = history.findIndex(bar => bar.time === todayBarTime);
+          if (existingTodayIndex !== -1) {
+            // Replace existing today's bar with API data
+            history[existingTodayIndex] = todayBar;
+            console.log(`🔄 Replaced today's bar with API data for ${symbol}`);
+          } else {
+            // Add today's bar if it doesn't exist
+            history.push(todayBar);
+            console.log(`✅ Added today's bar from API for ${symbol}`);
+          }
+        }
+      }
+    }
+    
     setCache(cacheKey, history);
     return history;
 
@@ -467,15 +562,18 @@ function getMockHistory(symbol: string, count: number, timespan: 'day' | 'week' 
   let price = (mockPrices[symbol] || 100) * 0.85; // Start 15% lower
   
   // Always use current date - no hardcoded dates
-  // Start from the most recent COMPLETED trading day (yesterday at market close)
+  // Use today's date (or most recent trading day if today is weekend)
   const now = new Date();
   const endDate = new Date(now);
-  endDate.setDate(endDate.getDate() - 1); // Yesterday
-  // Skip weekends for stocks
-  while (endDate.getDay() === 0 || endDate.getDay() === 6) {
-    endDate.setDate(endDate.getDate() - 1);
+  // If today is a weekend, go back to the last weekday
+  // Otherwise, use today to include today's data
+  if (endDate.getDay() === 0 || endDate.getDay() === 6) {
+    // It's a weekend, find the last weekday
+    while (endDate.getDay() === 0 || endDate.getDay() === 6) {
+      endDate.setDate(endDate.getDate() - 1);
+    }
   }
-  endDate.setHours(16, 0, 0, 0); // 4 PM market close
+  endDate.setHours(23, 59, 59, 0); // End of today (or last trading day)
   
   const endTime = Math.floor(endDate.getTime() / 1000);
   const baseTime = endTime - (count - 1) * intervalSeconds;

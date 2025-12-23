@@ -1,10 +1,15 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
-import { getMultipleStockQuotes } from '../services/external-apis/polygon.service.js';
+import { getMultipleStockQuotes as getPolygonStockQuotes } from '../services/external-apis/polygon.service.js';
+import {
+  initFinnhubService, 
+  getMultipleStockQuotes as getFinnhubStockQuotes,
+} from '../services/external-apis/finnhub.service.js';
 import { getMultipleCryptoPrices } from '../services/external-apis/cryptocompare.service.js';
 import { getExchangeRates } from '../services/external-apis/openexchange.service.js';
 import { WS_CONFIG, DEFAULT_STOCKS, DEFAULT_CRYPTOS } from '../config/constants.js';
-import type { WSMessage, WSSubscription } from '../types/index.js';
+import { env } from '../config/env.js';
+import type { WSMessage, WSSubscription, StockQuote } from '../types/index.js';
 
 interface Client {
   id: string;
@@ -98,7 +103,7 @@ export function setupWebSocket(server: Server) {
     });
   });
 
-  // Start data polling
+  // Start data polling (includes Finnhub initialization)
   startDataPolling();
 
   // Start heartbeat
@@ -136,6 +141,8 @@ function handleSubscribe(client: Client, subscription: WSSubscription) {
   });
 
   console.log(`📥 Client ${client.id} subscribed to ${channel}: ${symbols.join(', ')}`);
+  
+  // Finnhub uses REST API polling, no need for WebSocket subscriptions
 }
 
 function handleUnsubscribe(client: Client, subscription: WSSubscription) {
@@ -150,41 +157,92 @@ function handleUnsubscribe(client: Client, subscription: WSSubscription) {
   }
 
   console.log(`📤 Client ${client.id} unsubscribed from ${channel}`);
+  
+  // Finnhub uses REST API polling, no need for WebSocket unsubscriptions
 }
 
+// Finnhub uses REST API polling, no WebSocket subscriptions needed
+
 function startDataPolling() {
-  // Poll stocks every 2 MINUTES (to respect rate limits)
-  // Polygon Free Tier: 5 requests/minute
-  stockInterval = setInterval(async () => {
-    if (clients.size === 0) {
-      console.log('⏸️ No clients connected, skipping stock poll');
-      return;
-    }
+  // Use Finnhub REST API polling for stocks if available
+  if (env.FINNHUB_API_KEY) {
+    console.log('📊 Using Finnhub REST API for stock updates (polling every 1 minute)');
+    
+    // Initialize Finnhub service (REST API mode)
+    initFinnhubService();
+    
+    // Poll stocks via Finnhub REST API
+    // Finnhub free tier allows 60 requests/minute, so we can poll every minute
+    const pollStocks = async () => {
+      if (clients.size === 0) {
+        return; // Skip silently if no clients
+      }
 
-    try {
-      // Get all subscribed stock symbols
-      const allSymbols = new Set<string>();
-      clients.forEach((client) => {
-        client.subscriptions.stocks.forEach((s) => allSymbols.add(s));
-      });
+      try {
+        // Get all subscribed stock symbols
+        const allSymbols = new Set<string>();
+        clients.forEach((client) => {
+          client.subscriptions.stocks.forEach((s) => allSymbols.add(s));
+        });
 
-      // Add default stocks
-      DEFAULT_STOCKS.forEach((s) => allSymbols.add(s));
+        // Add default stocks
+        DEFAULT_STOCKS.forEach((s) => allSymbols.add(s));
 
-      if (allSymbols.size === 0) return;
+        if (allSymbols.size === 0) return;
 
-      console.log(`📊 Polling ${allSymbols.size} stocks...`);
-      const quotes = await getMultipleStockQuotes(Array.from(allSymbols));
-      
-      quotes.forEach((quote) => {
-        broadcast('stock-update', quote);
-      });
-      
-      console.log(`✅ Broadcasted ${quotes.length} stock updates`);
-    } catch (error) {
-      console.error('Error polling stocks:', error);
-    }
-  }, 120000); // 2 minutes
+        const quotes = await getFinnhubStockQuotes(Array.from(allSymbols));
+        
+        quotes.forEach((quote) => {
+          broadcast('stock-update', quote);
+        });
+        
+        if (quotes.length > 0) {
+          console.log(`✅ Updated ${quotes.length} stocks via Finnhub REST API`);
+        }
+      } catch (error: any) {
+        console.error('❌ Error polling stocks from Finnhub:', error.message || error);
+      }
+    };
+
+    // Initial poll immediately
+    pollStocks();
+
+    // Then poll every 1 minute (Finnhub free tier allows 60 requests/minute)
+    stockInterval = setInterval(pollStocks, 60 * 1000);
+  } else {
+    // Fallback to Polygon polling
+    console.log('📊 Using Polygon polling for stock updates (every 2 minutes)');
+    stockInterval = setInterval(async () => {
+      if (clients.size === 0) {
+        console.log('⏸️ No clients connected, skipping stock poll');
+        return;
+      }
+
+      try {
+        // Get all subscribed stock symbols
+        const allSymbols = new Set<string>();
+        clients.forEach((client) => {
+          client.subscriptions.stocks.forEach((s) => allSymbols.add(s));
+        });
+
+        // Add default stocks
+        DEFAULT_STOCKS.forEach((s) => allSymbols.add(s));
+
+        if (allSymbols.size === 0) return;
+
+        console.log(`📊 Polling ${allSymbols.size} stocks via Polygon...`);
+        const quotes = await getPolygonStockQuotes(Array.from(allSymbols));
+        
+        quotes.forEach((quote) => {
+          broadcast('stock-update', quote);
+        });
+        
+        console.log(`✅ Broadcasted ${quotes.length} stock updates`);
+      } catch (error) {
+        console.error('Error polling stocks:', error);
+      }
+    }, 120000); // 2 minutes
+  }
 
   // Poll crypto every 30 seconds (CryptoCompare has higher limits)
   cryptoInterval = setInterval(async () => {
@@ -233,9 +291,15 @@ function startDataPolling() {
     console.log('🚀 Sending initial data to clients...');
     
     try {
-      // Send initial stock data
-      const stocks = await getMultipleStockQuotes(DEFAULT_STOCKS);
-      stocks.forEach((quote) => {
+      // Send initial stock data - prefer Finnhub, fallback to Polygon
+      let stocks;
+      if (env.FINNHUB_API_KEY) {
+        stocks = await getFinnhubStockQuotes(DEFAULT_STOCKS);
+      } else {
+        stocks = await getPolygonStockQuotes(DEFAULT_STOCKS);
+      }
+      
+      stocks.forEach((quote: StockQuote) => {
         broadcast('stock-update', quote);
       });
       console.log(`✅ Sent ${stocks.length} initial stock updates`);

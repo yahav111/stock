@@ -18,6 +18,7 @@ const envSchema = z.object({
   POLYGON_API_KEY: z.string().optional(),
   CRYPTOCOMPARE_API_KEY: z.string().optional(),
   OPENEXCHANGERATES_APP_ID: z.string().optional(),
+  FINNHUB_API_KEY: z.string().optional(),
 
   // Supabase (optional)
   SUPABASE_URL: z.string().url().optional(),
@@ -48,6 +49,7 @@ export const env = {
   POLYGON_API_KEY: process.env.POLYGON_API_KEY || '',
   CRYPTOCOMPARE_API_KEY: process.env.CRYPTOCOMPARE_API_KEY || '',
   OPENEXCHANGERATES_APP_ID: process.env.OPENEXCHANGERATES_APP_ID || '',
+  FINNHUB_API_KEY: process.env.FINNHUB_API_KEY || '',
   SUPABASE_URL: process.env.SUPABASE_URL || '',
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || '',
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',

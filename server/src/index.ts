@@ -60,12 +60,6 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // ===================
-// WebSocket
-// ===================
-
-setupWebSocket(server);
-
-// ===================
 // Server Start
 // ===================
 
@@ -95,6 +89,10 @@ async function start() {
     console.log(`   Health: http://localhost:${PORT}/api/health`);
     console.log('───────────────────────────────────────────');
     console.log('');
+
+    // Initialize WebSocket after server is listening
+    setupWebSocket(server);
+
     console.log('📚 API Endpoints:');
     console.log('   GET  /api/stocks/:symbol');
     console.log('   GET  /api/stocks?symbols=AAPL,GOOGL');

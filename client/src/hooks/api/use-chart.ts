@@ -31,9 +31,12 @@ export function useChart(params: ChartDataParams, enabled = true) {
     retry: 1,
     // Refetch when window regains focus (for real-time updates)
     refetchOnWindowFocus: true,
-    // Refetch interval based on range
+    // Refetch when component mounts to ensure fresh data
+    refetchOnMount: true,
+    // Refetch interval based on range - more frequent for daily to get today's data
+    // For daily charts, refetch every 2 minutes to match stock price updates
     refetchInterval: params.range === '1D' 
-      ? 60 * 60 * 1000      // Refetch every hour for daily
+      ? 2 * 60 * 1000       // Refetch every 2 minutes for daily (to match stock price updates)
       : params.range === '1W'
       ? 6 * 60 * 60 * 1000   // Refetch every 6 hours for weekly
       : false,                // No auto-refetch for monthly

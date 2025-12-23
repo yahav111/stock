@@ -111,6 +111,7 @@ JWT_SECRET=your-super-secret-key-here
 POLYGON_API_KEY=your_polygon_api_key
 CRYPTOCOMPARE_API_KEY=your_cryptocompare_api_key
 OPENEXCHANGERATES_APP_ID=your_openexchangerates_app_id
+FINNHUB_API_KEY=your_finnhub_api_key  # Optional: For real-time stock quotes via WebSocket (15-min updates on free tier)
 
 # CORS
 CLIENT_URL=http://localhost:5173

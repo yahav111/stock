@@ -249,36 +249,77 @@ export function TradingChart({
       // Wait for data
       if (!historyData || historyData.length === 0) return
 
-      // Filter out any future dates
+      // Filter out any future dates and sort by time
       const now = Math.floor(Date.now() / 1000)
-      const validData = historyData.filter(bar => bar.time <= now)
+      let validData = historyData.filter(bar => bar.time <= now)
       
       if (validData.length === 0) {
         console.warn('⚠️ All data filtered out as future dates')
         return
       }
 
-      // Transform API data to chart format
-      const chartData = validData.map(bar => {
-        const date = new Date(bar.time * 1000)
-        const dateStr = date.toISOString().split('T')[0]
-        return {
-          time: dateStr as Time,
-          open: bar.open,
-          high: bar.high,
-          low: bar.low,
-          close: bar.close,
+      // Sort by time to ensure proper ordering
+      validData.sort((a, b) => a.time - b.time)
+      
+      // Remove duplicates based on time (unix timestamp)
+      const seenTimes = new Set<number>()
+      validData = validData.filter(bar => {
+        if (seenTimes.has(bar.time)) {
+          console.warn(`⚠️ Duplicate bar found at time ${bar.time} (${new Date(bar.time * 1000).toISOString()}), removing duplicate`)
+          return false
         }
+        seenTimes.add(bar.time)
+        return true
       })
 
-      const lineData = validData.map(bar => {
+      // Transform API data to chart format and remove duplicates by date string
+      // lightweight-charts uses date strings, so we need to ensure uniqueness by date
+      // Group by date string and keep the latest bar for each date
+      const dateMap = new Map<string, { time: Time; open: number; high: number; low: number; close: number; originalTime: number }>()
+      
+      for (const bar of validData) {
         const date = new Date(bar.time * 1000)
         const dateStr = date.toISOString().split('T')[0]
-        return {
-          time: dateStr as Time,
-          value: bar.close,
+        const existing = dateMap.get(dateStr)
+        
+        // If we haven't seen this date, or if this bar is newer (higher timestamp), use it
+        if (!existing || existing.originalTime < bar.time) {
+          dateMap.set(dateStr, {
+            time: dateStr as Time,
+            open: bar.open,
+            high: bar.high,
+            low: bar.low,
+            close: bar.close,
+            originalTime: bar.time,
+          })
+        } else {
+          // Log when we skip a duplicate
+          console.log(`⚠️ Skipping duplicate bar for date ${dateStr}, keeping newer one`);
         }
+      }
+      
+      // Convert map to array and sort by date string (ensures no duplicates)
+      const chartData = Array.from(dateMap.values())
+        .map(({ originalTime, ...rest }) => rest) // Remove originalTime before passing to chart
+        .sort((a, b) => (a.time as string).localeCompare(b.time as string)) // Sort by date string
+      
+      // Final check - ensure no duplicate date strings (shouldn't happen but just in case)
+      const finalDates = new Set<string>()
+      const finalChartData = chartData.filter(item => {
+        const dateStr = item.time as string
+        if (finalDates.has(dateStr)) {
+          console.error(`❌ CRITICAL: Found duplicate date in final chartData: ${dateStr}`);
+          return false
+        }
+        finalDates.add(dateStr)
+        return true
       })
+
+      // Create lineData from the same deduplicated chartData
+      const lineData = finalChartData.map(bar => ({
+        time: bar.time,
+        value: bar.close,
+      }))
 
       // Add series based on chart type
       if (chartType === "candlestick") {
@@ -290,7 +331,7 @@ export function TradingChart({
           wickUpColor: "#26a69a",
           wickDownColor: "#ef5350",
         })
-        series.setData(chartData)
+        series.setData(finalChartData)
         seriesRef.current = series
       } else if (chartType === "line") {
         const series = chartRef.current.addLineSeries({
