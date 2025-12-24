@@ -1,0 +1,135 @@
+[
+  {
+    "api": "Finnhub",
+    "url": "https://finnhub.io/api/v1/quote",
+    "purpose": "מחיר מניה נוכחי (current price)",
+    "preferred": true,
+    "reason": "עדיפות ברורה - מספק מחיר נוכחי (real-time עם עיכוב 15 דקות) לעומת Polygon שמספק רק יום קודם. בנוסף, Finnhub מאפשר 60 requests/minute לעומת 5 של Polygon. הנתונים יותר עדכניים והשימוש פשוט יותר.",
+    "rateLimit": "60 requests/minute",
+    "updateFrequency": "Real-time (עם עיכוב 15 דקות ב-free tier)",
+    "dataProvided": ["price", "change", "changePercent"]
+  },
+  {
+    "api": "Polygon",
+    "url": "https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
+    "purpose": "מחיר מניה של יום מסחר קודם (previous day)",
+    "preferred": false,
+    "reason": "פחות עדיף - מספק רק נתונים של יום קודם, לא מחיר נוכחי. Rate limit נמוך יותר (5 requests/minute). מתאים רק כגיבוי או כאשר אין צורך במחיר נוכחי.",
+    "rateLimit": "5 requests/minute (250/day)",
+    "updateFrequency": "יום קודם בלבד",
+    "dataProvided": ["price", "open", "high", "low", "volume", "timestamp"]
+  },
+  {
+    "api": "Finnhub",
+    "url": "N/A - צריך לעשות מספר בקשות ל-/quote",
+    "purpose": "מספר מניות - אין endpoint ייעודי",
+    "preferred": false,
+    "reason": "פחות יעיל - צריך לעשות בקשה נפרדת לכל מניה. למרות ש-Finnhub מאפשר 60 requests/minute, זה עדיין פחות יעיל מאשר Polygon שמביא את כל המניות בבקשה אחת.",
+    "rateLimit": "60 requests/minute (אבל צריך N בקשות)",
+    "updateFrequency": "Real-time",
+    "efficiency": "נמוכה - N בקשות עבור N מניות"
+  },
+  {
+    "api": "Polygon",
+    "url": "https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/{date}",
+    "purpose": "כל המניות ביום מסחר אחד - בקשה אחת לכל המניות",
+    "preferred": true,
+    "reason": "עדיפות ברורה - בקשה אחת מביאה את כל המניות ביום אחד. מאוד יעיל כאשר צריך מספר מניות. למרות ש-rate limit נמוך יותר, היעילות גבוהה יותר כי בקשה אחת מספיקה.",
+    "rateLimit": "5 requests/minute (אבל בקשה אחת לכל המניות)",
+    "updateFrequency": "יום קודם",
+    "efficiency": "גבוהה מאוד - בקשה אחת לכל המניות"
+  },
+  {
+    "api": "Finnhub",
+    "url": "N/A - אין endpoint לנתונים היסטוריים",
+    "purpose": "נתונים היסטוריים - לא זמין",
+    "preferred": false,
+    "reason": "לא זמין - Finnhub לא מספק endpoint לנתונים היסטוריים (OHLC bars) בגרסה החינמית. Polygon הוא האפשרות היחידה.",
+    "rateLimit": "N/A",
+    "updateFrequency": "N/A",
+    "dataProvided": "לא זמין"
+  },
+  {
+    "api": "Polygon",
+    "url": "https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/{timespan}/{from}/{to}",
+    "purpose": "נתונים היסטוריים (OHLC bars) - יום/שבוע/חודש",
+    "preferred": true,
+    "reason": "עדיפות מוחלטת - זהו ה-API היחיד שמספק נתונים היסטוריים. תומך ב-pagination, מגוון timespans (day/week/month), ונתונים מותאמים (adjusted). חיוני לגרפים.",
+    "rateLimit": "5 requests/minute (עם pagination עד 5 בקשות)",
+    "updateFrequency": "היסטורי",
+    "timespans": ["day", "week", "month"],
+    "features": ["pagination", "adjusted prices", "sorting"]
+  },
+  {
+    "api": "Polygon",
+    "url": "https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{from}/{to}",
+    "purpose": "נתוני היום (ניסיון לקבל נתונים של היום)",
+    "preferred": true,
+    "reason": "עדיפות - משמש להשלמת נתוני היום לגרפים. משמש יחד עם endpoint ההיסטורי כדי לקבל נתונים מלאים כולל היום.",
+    "rateLimit": "5 requests/minute",
+    "updateFrequency": "היום",
+    "usage": "משולב עם endpoint ההיסטורי"
+  },
+  {
+    "api": "Finnhub",
+    "url": "N/A - אין endpoint לפרופיל חברה",
+    "purpose": "פרופיל חברה - לא זמין",
+    "preferred": false,
+    "reason": "לא זמין - Finnhub לא מספק endpoint לפרופיל חברה או פרטים נוספים על מניה. Polygon הוא האפשרות היחידה.",
+    "rateLimit": "N/A",
+    "updateFrequency": "N/A",
+    "dataProvided": "לא זמין"
+  },
+  {
+    "api": "Polygon",
+    "url": "https://api.polygon.io/v3/reference/tickers/{symbol}",
+    "purpose": "פרופיל חברה ופרטי מניה (שם, שווי שוק, בורסה וכו')",
+    "preferred": true,
+    "reason": "עדיפות מוחלטת - זהו ה-API היחיד שמספק פרטי חברה. כולל שם החברה, שווי שוק, בורסה, תיאור, ועוד. חיוני למידע מפורט על מניה.",
+    "rateLimit": "5 requests/minute",
+    "updateFrequency": "עדכון נדיר",
+    "dataProvided": ["name", "market_cap", "primary_exchange", "description", "homepage_url", "total_employees"]
+  },
+  {
+    "api": "Finnhub",
+    "url": "N/A - אין endpoint לחיפוש מניות",
+    "purpose": "חיפוש מניות - לא זמין",
+    "preferred": false,
+    "reason": "לא זמין - Finnhub לא מספק endpoint לחיפוש מניות. Polygon הוא האפשרות היחידה.",
+    "rateLimit": "N/A",
+    "updateFrequency": "N/A",
+    "dataProvided": "לא זמין"
+  },
+  {
+    "api": "Polygon",
+    "url": "https://api.polygon.io/v3/reference/tickers",
+    "purpose": "חיפוש מניות לפי שם או סמל",
+    "preferred": true,
+    "reason": "עדיפות מוחלטת - זהו ה-API היחיד שמספק חיפוש מניות. תומך בחיפוש לפי שם או סמל, מסנן רק מניות פעילות, ומחזיר פרטים בסיסיים. חיוני לפונקציית חיפוש.",
+    "rateLimit": "5 requests/minute",
+    "updateFrequency": "Real-time",
+    "parameters": ["search", "active", "limit", "market"]
+  },
+  {
+    "api": "Finnhub",
+    "url": "https://finnhub.io/api/v1/news",
+    "purpose": "חדשות שוק לפי קטגוריה",
+    "preferred": true,
+    "reason": "עדיפות מוחלטת - Polygon לא מספק endpoint לחדשות. Finnhub מספק חדשות מעודכנות עם קטגוריות (general, forex, crypto, merger), תמיכה ב-pagination (minId), ונתונים מפורטים (headline, summary, source, url).",
+    "rateLimit": "60 requests/minute",
+    "updateFrequency": "Real-time",
+    "categories": ["general", "forex", "crypto", "merger"],
+    "pagination": "minId parameter"
+  },
+  {
+    "api": "Polygon",
+    "url": "N/A - אין endpoint לחדשות",
+    "purpose": "חדשות שוק - לא זמין",
+    "preferred": false,
+    "reason": "לא זמין - Polygon לא מספק endpoint לחדשות שוק. Finnhub הוא האפשרות היחידה.",
+    "rateLimit": "N/A",
+    "updateFrequency": "N/A",
+    "dataProvided": "לא זמין"
+  }
+]
+
