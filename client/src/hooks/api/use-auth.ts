@@ -18,7 +18,7 @@ export const authKeys = {
  * Hook to get current user
  */
 export function useCurrentUser(enabled = true) {
-  const { setUser, setAuthenticated } = useAuthStore();
+  const { setUser } = useAuthStore();
   
   return useQuery({
     queryKey: authKeys.user(),
@@ -26,11 +26,9 @@ export function useCurrentUser(enabled = true) {
       try {
         const user = await authApi.me();
         setUser(user);
-        setAuthenticated(true);
         return user;
       } catch {
         setUser(null);
-        setAuthenticated(false);
         throw new Error('Not authenticated');
       }
     },
@@ -45,14 +43,13 @@ export function useCurrentUser(enabled = true) {
  */
 export function useSignup() {
   const queryClient = useQueryClient();
-  const { setUser, setAuthenticated } = useAuthStore();
+  const { setUser } = useAuthStore();
   const navigate = useNavigate();
   
   return useMutation({
     mutationFn: (params: SignupParams) => authApi.signup(params),
     onSuccess: (data) => {
       setUser(data.user);
-      setAuthenticated(true);
       queryClient.setQueryData(authKeys.user(), data.user);
       navigate('/dashboard');
     },
@@ -64,14 +61,13 @@ export function useSignup() {
  */
 export function useLogin() {
   const queryClient = useQueryClient();
-  const { setUser, setAuthenticated } = useAuthStore();
+  const { setUser } = useAuthStore();
   const navigate = useNavigate();
   
   return useMutation({
     mutationFn: (params: LoginParams) => authApi.login(params),
     onSuccess: (data) => {
       setUser(data.user);
-      setAuthenticated(true);
       queryClient.setQueryData(authKeys.user(), data.user);
       navigate('/dashboard');
     },
@@ -83,21 +79,19 @@ export function useLogin() {
  */
 export function useLogout() {
   const queryClient = useQueryClient();
-  const { setUser, setAuthenticated } = useAuthStore();
+  const { setUser } = useAuthStore();
   const navigate = useNavigate();
   
   return useMutation({
     mutationFn: () => authApi.logout(),
     onSuccess: () => {
       setUser(null);
-      setAuthenticated(false);
       queryClient.clear(); // Clear all cached data
       navigate('/login');
     },
     onError: () => {
       // Logout anyway on error
       setUser(null);
-      setAuthenticated(false);
       queryClient.clear();
       navigate('/login');
     },

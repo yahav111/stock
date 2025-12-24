@@ -117,3 +117,24 @@ export interface UserPreferences {
   currency: string;
 }
 
+// Portfolio Types
+export interface PortfolioEntry {
+  userId: string;
+  symbol: string;
+  shares: number;
+  averagePrice: number;
+  currentPrice: number;
+  gainLoss: number;
+  gainLossPercent: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PortfolioSummary {
+  totalValue: number;
+  totalCost: number;
+  totalGainLoss: number;
+  totalGainLossPercent: number;
+  entries: PortfolioEntry[];
+}
+

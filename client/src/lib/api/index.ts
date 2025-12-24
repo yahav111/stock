@@ -38,6 +38,7 @@ export { cryptoApi } from './crypto.api';
 export { currenciesApi } from './currencies.api';
 export { authApi } from './auth.api';
 export { preferencesApi } from './preferences.api';
+export { portfolioApi } from './portfolio.api';
 
 // Re-export types
 export type { GetStocksParams, GetHistoryParams, SearchParams as StockSearchParams, SearchResult as StockSearchResult } from './stocks.api';
@@ -45,6 +46,7 @@ export type { GetCryptosParams, SearchParams as CryptoSearchParams, SearchResult
 export type { ExchangeRates, ConvertParams, ConvertResult, CurrencyPair, DefaultRatesResult } from './currencies.api';
 export type { SignupParams, LoginParams, User, AuthResult, SessionInfo } from './auth.api';
 export type { UserPreferences, UpdatePreferencesParams, WatchlistUpdateParams } from './preferences.api';
+export type { AddPortfolioEntryParams, UpdatePortfolioEntryParams } from './portfolio.api';
 
 // Unified API object for convenience
 import { stocksApi } from './stocks.api';
@@ -52,6 +54,7 @@ import { cryptoApi } from './crypto.api';
 import { currenciesApi } from './currencies.api';
 import { authApi } from './auth.api';
 import { preferencesApi } from './preferences.api';
+import { portfolioApi } from './portfolio.api';
 
 export const api = {
   stocks: stocksApi,
@@ -59,5 +62,6 @@ export const api = {
   currencies: currenciesApi,
   auth: authApi,
   preferences: preferencesApi,
+  portfolio: portfolioApi,
 } as const;
 

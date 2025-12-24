@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { HomePage } from "./pages/home"
 import { LoginPage } from "./pages/login"
@@ -7,10 +8,11 @@ import { useAuthStore } from "./stores/auth-store"
 
 // Protected route wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, user } = useAuthStore()
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+  // If not authenticated, redirect to home page
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/" replace />
   }
 
   return <>{children}</>
@@ -28,6 +30,25 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  const { logout } = useAuthStore()
+
+  useEffect(() => {
+    // Listen for unauthorized events
+    const handleUnauthorized = () => {
+      logout()
+      // Redirect to home page if not already there
+      if (window.location.pathname !== '/') {
+        window.location.href = '/'
+      }
+    }
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized)
+
+    return () => {
+      window.removeEventListener('auth:unauthorized', handleUnauthorized)
+    }
+  }, [logout])
+
   return (
     <BrowserRouter>
       <Routes>

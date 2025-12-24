@@ -5,4 +5,5 @@
 export * from './users';
 export * from './preferences';
 export * from './uploads';
+export * from './portfolio';
 

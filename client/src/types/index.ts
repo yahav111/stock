@@ -242,3 +242,39 @@ export interface FileUpload {
   createdAt: Date
 }
 
+// Portfolio Types
+export interface PortfolioEntry {
+  userId: string
+  symbol: string
+  shares: number
+  averagePrice: number
+  currentPrice: number
+  gainLoss: number
+  gainLossPercent: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface PortfolioSummary {
+  totalValue: number
+  totalCost: number
+  totalGainLoss: number
+  totalGainLossPercent: number
+}
+
+export interface PortfolioResponse {
+  entries: PortfolioEntry[]
+  summary: PortfolioSummary
+}
+
+export interface AddPortfolioEntryParams {
+  symbol: string
+  shares: number
+  averagePrice: number
+}
+
+export interface UpdatePortfolioEntryParams {
+  shares?: number
+  averagePrice?: number
+}
+

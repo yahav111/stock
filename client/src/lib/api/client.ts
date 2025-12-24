@@ -30,6 +30,21 @@ apiClient.interceptors.request.use(
       console.log(`🌐 API Request: ${config.method?.toUpperCase()} ${config.url}`);
     }
     
+    // Add authentication token if available
+    // Try to get token from localStorage (auth-storage)
+    try {
+      const authStorage = localStorage.getItem('auth-storage');
+      if (authStorage) {
+        const authData = JSON.parse(authStorage);
+        const token = authData?.state?.token;
+        if (token && !config.headers.Authorization) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      }
+    } catch (error) {
+      // Ignore errors reading from localStorage
+    }
+    
     // Add timestamp to prevent caching
     if (config.method === 'get') {
       config.params = {
@@ -70,8 +85,26 @@ apiClient.interceptors.response.use(
       
       // Unauthorized - session expired
       if (status === 401) {
-        // Clear auth state and redirect to login
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        // Clear auth state
+        try {
+          const authStorage = localStorage.getItem('auth-storage');
+          if (authStorage) {
+            const authData = JSON.parse(authStorage);
+            if (authData?.state) {
+              authData.state.user = null;
+              authData.state.token = null;
+              authData.state.isAuthenticated = false;
+              localStorage.setItem('auth-storage', JSON.stringify(authData));
+            }
+          }
+        } catch (error) {
+          // Ignore errors
+        }
+        
+        // Redirect to home page if not already there
+        if (window.location.pathname !== '/') {
+          window.location.href = '/';
+        }
       }
       
       // Rate limited
@@ -88,7 +121,13 @@ apiClient.interceptors.response.use(
     
     // Network error
     if (!error.response) {
-      console.error('Network error, please check your connection');
+      const isNetworkError = error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK' || error.message?.includes('Network Error');
+      if (isNetworkError) {
+        console.error('❌ Cannot connect to server. Make sure the server is running on http://localhost:3001');
+        console.error('   Run: cd server && npm run dev');
+      } else {
+        console.error('Network error, please check your connection');
+      }
     }
     
     return Promise.reject(error);

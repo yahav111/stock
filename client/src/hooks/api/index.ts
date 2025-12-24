@@ -71,3 +71,13 @@ export {
 // News
 export { useNews, useLoadMoreNews } from './use-news';
 
+// Portfolio
+export {
+  usePortfolio,
+  useAddPortfolioEntry,
+  useUpdatePortfolioEntry,
+  useDeletePortfolioEntry,
+  useInvalidatePortfolio,
+  portfolioKeys,
+} from './use-portfolio';
+

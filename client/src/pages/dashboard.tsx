@@ -8,6 +8,7 @@ import { Watchlist } from "../components/widgets/watchlist"
 import { CurrencyConverter } from "../components/widgets/currency-converter"
 import { MarketNewsCarousel } from "../components/widgets/market-news-carousel"
 import { TradingChart } from "../components/charts/trading-chart"
+import { Portfolio } from "../components/widgets/portfolio"
 import { useWebSocket } from "../hooks/use-websocket"
 import { useDashboardStore } from "../stores/dashboard-store"
 
@@ -61,6 +62,11 @@ export function DashboardPage() {
             {/* Currency Converter (via Open Exchange Rates API) */}
             <div className="lg:col-span-1">
               <CurrencyConverter />
+            </div>
+
+            {/* Portfolio - User Stock Holdings */}
+            <div className="lg:col-span-4">
+              <Portfolio />
             </div>
 
             {/* Watchlist - Stocks & Crypto */}
