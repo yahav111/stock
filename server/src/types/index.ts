@@ -49,6 +49,18 @@ export interface CurrencyRate {
   timestamp: number;
 }
 
+// News Types
+export interface MarketNews {
+  id: string;
+  headline: string;
+  summary: string;
+  source: string;
+  publishedAt: number; // Unix timestamp in milliseconds
+  relatedTickers?: string[];
+  url: string;
+  image?: string; // Optional image URL (from Open Graph or placeholder)
+}
+
 // WebSocket Types
 export interface WSMessage {
   type: WSMessageType;

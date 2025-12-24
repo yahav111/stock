@@ -6,6 +6,7 @@ import { StockTicker } from "../components/widgets/stock-ticker"
 import { CryptoTicker } from "../components/widgets/crypto-ticker"
 import { Watchlist } from "../components/widgets/watchlist"
 import { CurrencyConverter } from "../components/widgets/currency-converter"
+import { MarketNewsCarousel } from "../components/widgets/market-news-carousel"
 import { TradingChart } from "../components/charts/trading-chart"
 import { useWebSocket } from "../hooks/use-websocket"
 import { useDashboardStore } from "../stores/dashboard-store"
@@ -65,6 +66,13 @@ export function DashboardPage() {
             {/* Watchlist - Stocks & Crypto */}
             <div className="lg:col-span-4">
               <Watchlist />
+            </div>
+
+            {/* Market News Carousel */}
+            <div className="lg:col-span-4">
+              <div className="bg-card rounded-lg border border-border shadow-sm">
+                <MarketNewsCarousel category="general" itemsPerPage={5} />
+              </div>
             </div>
           </div>
         </main>

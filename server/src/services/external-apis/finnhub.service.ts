@@ -5,7 +5,7 @@
 import WebSocket from 'ws';
 import axios from 'axios';
 import { env } from '../../config/env.js';
-import type { StockQuote } from '../../types/index.js';
+import type { StockQuote, MarketNews } from '../../types/index.js';
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 const FINNHUB_WS_URL = 'wss://ws.finnhub.io';
@@ -387,5 +387,101 @@ export function getServiceStatus(): { connected: boolean; subscribedCount: numbe
     connected: ws !== null && ws.readyState === WebSocket.OPEN,
     subscribedCount: subscribedSymbols.size,
   };
+}
+
+// News cache
+const newsCache = new Map<string, { data: MarketNews[]; timestamp: number }>();
+const NEWS_CACHE_TTL = 2 * 60 * 1000; // 2 minutes cache
+
+/**
+ * Get market news from Finnhub
+ * @param category - News category (general, forex, crypto, merger)
+ * @param minId - Optional minimum news ID for pagination
+ */
+export async function getMarketNews(
+  category: string = 'general',
+  minId?: number
+): Promise<MarketNews[]> {
+  // Check cache first
+  const cacheKey = `${category}-${minId || 'latest'}`;
+  const cached = newsCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < NEWS_CACHE_TTL) {
+    return cached.data;
+  }
+
+  if (!env.FINNHUB_API_KEY) {
+    console.warn('Finnhub API key not configured');
+    return [];
+  }
+
+  try {
+    const response = await axios.get(`${FINNHUB_BASE_URL}/news`, {
+      params: {
+        category: category,
+        token: env.FINNHUB_API_KEY,
+        ...(minId && { minId }),
+      },
+      timeout: 10000,
+    });
+
+    const data = response.data;
+    if (!Array.isArray(data)) {
+      return [];
+    }
+
+    // Normalize and deduplicate news
+    const seenIds = new Set<string>();
+    const seenHeadlines = new Set<string>();
+    const normalizedNews: MarketNews[] = [];
+
+    for (const item of data) {
+      // Create unique ID from Finnhub's id or generate from headline
+      const id = item.id?.toString() || `news-${item.headline?.substring(0, 50).replace(/\s+/g, '-')}`;
+      const headline = item.headline || item.title || 'No headline';
+
+      // Deduplicate by ID or headline
+      if (seenIds.has(id) || seenHeadlines.has(headline.toLowerCase())) {
+        continue;
+      }
+
+      seenIds.add(id);
+      seenHeadlines.add(headline.toLowerCase());
+
+      // Normalize publishedAt timestamp (Finnhub uses seconds, convert to milliseconds)
+      const publishedAt = item.datetime 
+        ? item.datetime * 1000 
+        : (item.time || Date.now());
+
+      // Try to get image from Finnhub response, or use placeholder
+      // Finnhub doesn't provide images directly, but we can use a placeholder service
+      const imageUrl = item.image || item.thumbnail || undefined;
+
+      const newsItem: MarketNews = {
+        id,
+        headline,
+        summary: item.summary || item.description || '',
+        source: item.source || 'Unknown',
+        publishedAt,
+        relatedTickers: item.related ? item.related.split(',').map((t: string) => t.trim()) : [],
+        url: item.url || item.link || '',
+        image: imageUrl, // Will be undefined if not available
+      };
+
+      normalizedNews.push(newsItem);
+    }
+
+    // Update cache
+    newsCache.set(cacheKey, { data: normalizedNews, timestamp: Date.now() });
+
+    console.log(`✅ Fetched ${normalizedNews.length} market news items from Finnhub (category: ${category})`);
+    return normalizedNews;
+  } catch (error: any) {
+    console.error(`❌ Error fetching market news from Finnhub:`, error.message || error);
+    // Return cached data if available, even if expired
+    if (cached) {
+      return cached.data;
+    }
+    return [];
+  }
 }
 

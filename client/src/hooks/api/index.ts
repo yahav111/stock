@@ -68,3 +68,6 @@ export {
   preferencesKeys,
 } from './use-preferences';
 
+// News
+export { useNews, useLoadMoreNews } from './use-news';
+

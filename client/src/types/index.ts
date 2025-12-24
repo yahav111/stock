@@ -44,6 +44,17 @@ export interface HistoricalBar {
   volume: number
 }
 
+export interface MarketNews {
+  id: string
+  headline: string
+  summary: string
+  source: string
+  publishedAt: number // Unix timestamp in milliseconds
+  relatedTickers?: string[]
+  url: string
+  image?: string // Optional image URL
+}
+
 export interface StockCandle {
   time: number
   open: number

@@ -10,6 +10,7 @@ import currenciesRoutes from './currencies.routes.js';
 import authRoutes from './auth.routes.js';
 import preferencesRoutes from './preferences.routes.js';
 import chartRoutes from './chart.routes.js';
+import newsRoutes from './news.routes.js';
 
 const router = Router();
 
@@ -32,6 +33,7 @@ router.use('/currencies', currenciesRoutes);
 router.use('/auth', authRoutes);
 router.use('/preferences', preferencesRoutes);
 router.use('/chart', chartRoutes);
+router.use('/news', newsRoutes);
 
 export default router;
 
