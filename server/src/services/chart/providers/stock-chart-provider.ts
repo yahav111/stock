@@ -145,7 +145,15 @@ export class StockChartProvider implements IChartProvider {
   }
 
   async getQuote(symbol: string) {
-    const quote = await polygonService.getStockQuote(symbol);
+    // Prefer Finnhub for current price (real-time), fallback to Polygon
+    let quote = null;
+    if (env.FINNHUB_API_KEY) {
+      quote = await finnhubService.getStockQuote(symbol).catch(() => null);
+    }
+    
+    if (!quote) {
+      quote = await polygonService.getStockQuote(symbol);
+    }
     
     if (!quote) return null;
 

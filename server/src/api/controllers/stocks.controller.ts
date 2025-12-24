@@ -7,6 +7,8 @@ import type { Request, Response } from 'express';
 import { successResponse, HttpStatus } from '../../lib/api-response.js';
 import { ApiError } from '../../lib/api-error.js';
 import * as polygonService from '../../services/external-apis/polygon.service.js';
+import * as finnhubService from '../../services/external-apis/finnhub.service.js';
+import { env } from '../../config/env.js';
 import { DEFAULT_STOCKS } from '../../config/constants.js';
 import type {
   GetStockParams,
@@ -19,6 +21,7 @@ import type {
 /**
  * GET /api/stocks/:symbol
  * Get a single stock quote
+ * Uses Finnhub for current price (preferred), falls back to Polygon
  */
 export async function getStock(
   req: Request<GetStockParams>,
@@ -26,7 +29,15 @@ export async function getStock(
 ) {
   const { symbol } = req.params;
   
-  const quote = await polygonService.getStockQuote(symbol);
+  // Prefer Finnhub for current price (real-time), fallback to Polygon
+  let quote = null;
+  if (env.FINNHUB_API_KEY) {
+    quote = await finnhubService.getStockQuote(symbol).catch(() => null);
+  }
+  
+  if (!quote) {
+    quote = await polygonService.getStockQuote(symbol);
+  }
   
   if (!quote) {
     throw ApiError.notFound(`Stock ${symbol}`);
@@ -57,7 +68,13 @@ export async function getStocks(
  * Get default stock quotes
  */
 export async function getDefaults(_req: Request, res: Response) {
+  console.log(`📊 [REST API] /stocks/defaults - Using Polygon for ${DEFAULT_STOCKS.length} stocks`);
   const quotes = await polygonService.getMultipleStockQuotes(DEFAULT_STOCKS);
+  
+  if (quotes.length > 0) {
+    const sample = quotes[0];
+    console.log(`📊 [REST API] Sample: ${sample.symbol} = $${sample.price.toFixed(2)} - Source: Polygon (previous day)`);
+  }
   
   res.status(HttpStatus.OK).json(successResponse(quotes, {
     total: quotes.length,

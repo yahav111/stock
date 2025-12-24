@@ -164,85 +164,92 @@ function handleUnsubscribe(client: Client, subscription: WSSubscription) {
 // Finnhub uses REST API polling, no WebSocket subscriptions needed
 
 function startDataPolling() {
-  // Use Finnhub REST API polling for stocks if available
+  // Initialize Finnhub service if available (for single stock quotes)
   if (env.FINNHUB_API_KEY) {
-    console.log('📊 Using Finnhub REST API for stock updates (polling every 1 minute)');
-    
-    // Initialize Finnhub service (REST API mode)
     initFinnhubService();
-    
-    // Poll stocks via Finnhub REST API
-    // Finnhub free tier allows 60 requests/minute, so we can poll every minute
-    const pollStocks = async () => {
-      if (clients.size === 0) {
-        return; // Skip silently if no clients
-      }
-
-      try {
-        // Get all subscribed stock symbols
-        const allSymbols = new Set<string>();
-        clients.forEach((client) => {
-          client.subscriptions.stocks.forEach((s) => allSymbols.add(s));
-        });
-
-        // Add default stocks
-        DEFAULT_STOCKS.forEach((s) => allSymbols.add(s));
-
-        if (allSymbols.size === 0) return;
-
-        const quotes = await getFinnhubStockQuotes(Array.from(allSymbols));
-        
-        quotes.forEach((quote) => {
-          broadcast('stock-update', quote);
-        });
-        
-        if (quotes.length > 0) {
-          console.log(`✅ Updated ${quotes.length} stocks via Finnhub REST API`);
-        }
-      } catch (error: any) {
-        console.error('❌ Error polling stocks from Finnhub:', error.message || error);
-      }
-    };
-
-    // Initial poll immediately
-    pollStocks();
-
-    // Then poll every 1 minute (Finnhub free tier allows 60 requests/minute)
-    stockInterval = setInterval(pollStocks, 60 * 1000);
-  } else {
-    // Fallback to Polygon polling
-    console.log('📊 Using Polygon polling for stock updates (every 2 minutes)');
-    stockInterval = setInterval(async () => {
-      if (clients.size === 0) {
-        console.log('⏸️ No clients connected, skipping stock poll');
-        return;
-      }
-
-      try {
-        // Get all subscribed stock symbols
-        const allSymbols = new Set<string>();
-        clients.forEach((client) => {
-          client.subscriptions.stocks.forEach((s) => allSymbols.add(s));
-        });
-
-        // Add default stocks
-        DEFAULT_STOCKS.forEach((s) => allSymbols.add(s));
-
-        if (allSymbols.size === 0) return;
-
-        console.log(`📊 Polling ${allSymbols.size} stocks via Polygon...`);
-        const quotes = await getPolygonStockQuotes(Array.from(allSymbols));
-        
-        quotes.forEach((quote) => {
-          broadcast('stock-update', quote);
-        });
-        
-        console.log(`✅ Broadcasted ${quotes.length} stock updates`);
-      } catch (error) {
-        console.error('Error polling stocks:', error);
-      }
-    }, 120000); // 2 minutes
   }
+  
+  // Prefer Polygon for multiple stocks (one request for all stocks via /grouped endpoint)
+  // This is more efficient than Finnhub which requires N requests for N stocks
+  // Fallback to Finnhub if Polygon is not available
+  const pollStocks = async () => {
+    if (clients.size === 0) {
+      return; // Skip silently if no clients
+    }
+
+    try {
+      // Get all subscribed stock symbols
+      const allSymbols = new Set<string>();
+      clients.forEach((client) => {
+        client.subscriptions.stocks.forEach((s) => allSymbols.add(s));
+      });
+
+      // Add default stocks
+      DEFAULT_STOCKS.forEach((s) => allSymbols.add(s));
+
+      if (allSymbols.size === 0) return;
+
+      let quotes: StockQuote[] = [];
+      
+      // Prefer Polygon for multiple stocks (efficient - one request)
+      if (env.POLYGON_API_KEY) {
+        try {
+          console.log(`📊 [STOCK POLLING] Using Polygon API for ${allSymbols.size} stocks (grouped endpoint)`);
+          quotes = await getPolygonStockQuotes(Array.from(allSymbols));
+          if (quotes.length > 0) {
+            console.log(`✅ [STOCK POLLING] Updated ${quotes.length} stocks via Polygon (grouped endpoint - efficient)`);
+            // Log sample prices to verify data source
+            if (quotes.length > 0) {
+              const sample = quotes[0];
+              console.log(`📊 [STOCK POLLING] Sample: ${sample.symbol} = $${sample.price.toFixed(2)} (${sample.changePercent > 0 ? '+' : ''}${sample.changePercent.toFixed(2)}%) - Source: Polygon (previous day data)`);
+            }
+          }
+        } catch (error: any) {
+          console.warn('⚠️ [STOCK POLLING] Polygon failed, falling back to Finnhub:', error.message || error);
+          // Fallback to Finnhub
+          if (env.FINNHUB_API_KEY) {
+            console.log(`📊 [STOCK POLLING] Falling back to Finnhub API for ${allSymbols.size} stocks`);
+            quotes = await getFinnhubStockQuotes(Array.from(allSymbols));
+            if (quotes.length > 0) {
+              console.log(`✅ [STOCK POLLING] Updated ${quotes.length} stocks via Finnhub (fallback)`);
+              // Log sample prices to verify data source
+              if (quotes.length > 0) {
+                const sample = quotes[0];
+                console.log(`📊 [STOCK POLLING] Sample: ${sample.symbol} = $${sample.price.toFixed(2)} (${sample.changePercent > 0 ? '+' : ''}${sample.changePercent.toFixed(2)}%) - Source: Finnhub (current price)`);
+              }
+            }
+          }
+        }
+      } else if (env.FINNHUB_API_KEY) {
+        // Use Finnhub if Polygon is not available
+        console.log(`📊 [STOCK POLLING] Using Finnhub API for ${allSymbols.size} stocks (Polygon not available)`);
+        quotes = await getFinnhubStockQuotes(Array.from(allSymbols));
+        if (quotes.length > 0) {
+          console.log(`✅ [STOCK POLLING] Updated ${quotes.length} stocks via Finnhub`);
+          // Log sample prices to verify data source
+          if (quotes.length > 0) {
+            const sample = quotes[0];
+            console.log(`📊 [STOCK POLLING] Sample: ${sample.symbol} = $${sample.price.toFixed(2)} (${sample.changePercent > 0 ? '+' : ''}${sample.changePercent.toFixed(2)}%) - Source: Finnhub (current price)`);
+          }
+        }
+      } else {
+        console.warn('⚠️ [STOCK POLLING] No API keys configured (neither Polygon nor Finnhub)');
+      }
+      
+      quotes.forEach((quote) => {
+        broadcast('stock-update', quote);
+      });
+    } catch (error: any) {
+      console.error('❌ Error polling stocks:', error.message || error);
+    }
+  };
+
+  // Initial poll immediately
+  pollStocks();
+
+  // Poll every 2 minutes (Polygon rate limit: 5 requests/minute, so 2 minutes is safe)
+  // Even though Polygon is more efficient (one request), we still respect rate limits
+  stockInterval = setInterval(pollStocks, 120000); // 2 minutes
 
   // Poll crypto every 30 seconds (CryptoCompare has higher limits)
   cryptoInterval = setInterval(async () => {
@@ -291,12 +298,20 @@ function startDataPolling() {
     console.log('🚀 Sending initial data to clients...');
     
     try {
-      // Send initial stock data - prefer Finnhub, fallback to Polygon
-      let stocks;
-      if (env.FINNHUB_API_KEY) {
+      // Send initial stock data - prefer Polygon for multiple stocks (efficient), fallback to Finnhub
+      let stocks: StockQuote[] = [];
+      
+      if (env.POLYGON_API_KEY) {
+        try {
+          stocks = await getPolygonStockQuotes(DEFAULT_STOCKS);
+        } catch (error) {
+          console.warn('⚠️ Polygon failed for initial data, falling back to Finnhub');
+          if (env.FINNHUB_API_KEY) {
+            stocks = await getFinnhubStockQuotes(DEFAULT_STOCKS);
+          }
+        }
+      } else if (env.FINNHUB_API_KEY) {
         stocks = await getFinnhubStockQuotes(DEFAULT_STOCKS);
-      } else {
-        stocks = await getPolygonStockQuotes(DEFAULT_STOCKS);
       }
       
       stocks.forEach((quote: StockQuote) => {

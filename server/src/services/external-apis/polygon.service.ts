@@ -140,7 +140,7 @@ export async function getMultipleStockQuotes(symbols: string[]): Promise<StockQu
     }
     const dateStr = yesterday.toISOString().split('T')[0];
 
-    console.log(`📡 Fetching grouped daily data for ${dateStr}`);
+    console.log(`📡 [POLYGON] Fetching grouped daily data for ${dateStr} (previous trading day)`);
     
     const response = await axios.get(
       `${POLYGON_BASE_URL}/v2/aggs/grouped/locale/us/market/stocks/${dateStr}`,
