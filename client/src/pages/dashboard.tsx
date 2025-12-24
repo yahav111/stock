@@ -35,12 +35,12 @@ export function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      {/* Header */}
+      <Header />
+
       {/* Real-time Stock & Crypto Tickers */}
       <StockTicker />
       <CryptoTicker />
-
-      {/* Header */}
-      <Header />
 
       {/* Main content */}
       <div className="flex-1 flex">
