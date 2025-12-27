@@ -5,7 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { portfolioApi } from '../../lib/api';
-import type { AddPortfolioEntryParams, UpdatePortfolioEntryParams } from '../../lib/api';
+import type { AddPortfolioEntryParams, UpdatePortfolioEntryParams, SetInitialCashParams } from '../../types';
 
 // Query keys for cache management
 export const portfolioKeys = {
@@ -63,6 +63,20 @@ export function useDeletePortfolioEntry() {
   
   return useMutation({
     mutationFn: (symbol: string) => portfolioApi.deletePortfolioEntry(symbol),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: portfolioKeys.all });
+    },
+  });
+}
+
+/**
+ * Hook to set initial cash
+ */
+export function useSetInitialCash() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (params: SetInitialCashParams) => portfolioApi.setInitialCash(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: portfolioKeys.all });
     },

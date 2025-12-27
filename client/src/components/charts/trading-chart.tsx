@@ -1,15 +1,22 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useMemo } from "react"
 import { createChart, ColorType } from "lightweight-charts"
 import type { IChartApi, ISeriesApi, Time } from "lightweight-charts"
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card"
 import { Button } from "../ui/button"
 import { Badge } from "../ui/badge"
-import { Clock, Wifi, WifiOff, Loader2, AlertCircle } from "lucide-react"
+import { Clock, Wifi, WifiOff, Loader2, AlertCircle, DollarSign } from "lucide-react"
 import { cn, formatCurrency, formatPercentage } from "../../lib/utils"
 import { useDashboardStore } from "../../stores/dashboard-store"
-import { useChart } from "../../hooks/api"
+import { useChart, useForexChart } from "../../hooks/api"
 import { StockSearch } from "../common/stock-search"
-import type { Timeframe } from "../../types"
+import type { Timeframe, HistoricalBar } from "../../types"
+
+// Supported forex currencies (same as stock-search.tsx)
+const SUPPORTED_FOREX = [
+  'EUR', 'GBP', 'JPY', 'ILS', 'CHF', 'CAD', 'AUD', 'CNY', 'INR', 'KRW',
+  'SGD', 'HKD', 'SEK', 'NOK', 'DKK', 'NZD', 'MXN', 'BRL', 'RUB', 'ZAR',
+  'TRY', 'PLN', 'THB', 'IDR', 'PHP',
+] as const;
 
 interface TradingChartProps {
   initialSymbol?: string
@@ -64,6 +71,12 @@ export function TradingChart({
   const [isChartReady, setIsChartReady] = useState(false)
   const [lastUpdateDisplay, setLastUpdateDisplay] = useState("")
 
+  // Detect if symbol is forex (exclude USD as it's the base)
+  const isForex = useMemo(() => {
+    const cleanSymbol = symbol.toUpperCase().replace(/^USD\//, '').trim()
+    return cleanSymbol !== 'USD' && SUPPORTED_FOREX.includes(cleanSymbol as any)
+  }, [symbol])
+
   // Get current timeframe config
   const currentTimeframeConfig = timeframes.find(tf => tf.value === timeframe) || timeframes[5]
 
@@ -72,7 +85,7 @@ export function TradingChart({
   const stockData = stocks[symbol]
   const cryptoData = cryptos[symbol]
 
-  // Map timeframe to range for unified chart API
+  // Map timeframe to range/interval for chart APIs
   const rangeMap: Record<Timeframe, '1D' | '1W' | '1M'> = {
     '1m': '1D',
     '5m': '1D',
@@ -84,73 +97,116 @@ export function TradingChart({
     '1M': '1M',
   };
 
-  // Use unified chart API (works for both stocks and crypto)
+  // Map timeframe to Twelve Data interval for forex
+  const forexIntervalMap: Record<Timeframe, '1day' | '1week'> = {
+    '1m': '1day',
+    '5m': '1day',
+    '15m': '1day',
+    '1h': '1day',
+    '4h': '1day',
+    '1d': '1day',
+    '1w': '1week',
+    '1M': '1week', // Map monthly to weekly for forex
+  };
+
+  // Use forex chart API if forex, otherwise unified chart API (stocks/crypto)
+  const cleanSymbol = useMemo(() => {
+    return symbol.toUpperCase().replace(/^USD\//, '').trim()
+  }, [symbol])
+
   const { data: chartData, isLoading: isLoadingHistory, error: historyError } = useChart(
     {
-      symbol,
+      symbol: cleanSymbol,
       range: rangeMap[timeframe],
     },
-    currentTimeframeConfig.available
+    !isForex && currentTimeframeConfig.available
   );
 
-  // Extract data from unified response
-  const historyData = chartData?.bars;
-  const apiStockData = chartData ? {
-    symbol: chartData.symbol,
-    price: chartData.bars?.[chartData.bars.length - 1]?.close || 0,
+  const { data: forexChartData, isLoading: isLoadingForex, error: forexError } = useForexChart(
+    {
+      symbol: cleanSymbol,
+      interval: forexIntervalMap[timeframe],
+    },
+    isForex && (timeframe === '1d' || timeframe === '1w')
+  );
+
+  // Use forex data if forex, otherwise regular chart data
+  const activeChartData = isForex ? forexChartData : chartData
+  const activeIsLoading = isForex ? isLoadingForex : isLoadingHistory
+  const activeError = isForex ? forexError : historyError
+
+  // Extract data from response
+  const historyData = activeChartData?.bars
+  const apiStockData = activeChartData ? {
+    symbol: activeChartData.symbol,
+    price: activeChartData.bars?.[activeChartData.bars.length - 1]?.close || 0,
     change: 0, // Will calculate from bars
     changePercent: 0,
-    volume: chartData.bars?.[chartData.bars.length - 1]?.volume || 0,
+    volume: activeChartData.bars?.[activeChartData.bars.length - 1]?.volume || 0,
     timestamp: Date.now(),
-    name: chartData.name,
-  } : null;
+    name: activeChartData.name || (isForex ? `USD/${activeChartData.symbol}` : activeChartData.name),
+  } : null
 
   // Debug logging
   useEffect(() => {
-    if (historyError) {
+    if (activeError) {
       console.log('📊 Chart Debug:', { 
         symbol, 
+        isForex,
         historyDataLength: historyData?.length, 
-        isLoadingHistory, 
-        historyError: String(historyError),
+        isLoading: activeIsLoading, 
+        error: String(activeError),
         isChartReady,
         timeframeAvailable: currentTimeframeConfig.available,
       })
     }
-  }, [symbol, historyData, isLoadingHistory, historyError, isChartReady, currentTimeframeConfig.available, chartType])
+  }, [symbol, isForex, historyData, activeIsLoading, activeError, isChartReady, currentTimeframeConfig.available, chartType])
 
   // Use WebSocket data first, then API data
-  // For crypto, check cryptos store; for stocks, check stocks store
-  const wsData = chartData?.type === 'crypto' ? cryptoData : stockData;
-  const currentPrice = wsData?.price ?? apiStockData?.price ?? (historyData?.[historyData.length - 1]?.close ?? 0);
+  // For forex, no WebSocket data; for crypto, check cryptos store; for stocks, check stocks store
+  const wsData = isForex ? null : (activeChartData?.type === 'crypto' ? cryptoData : stockData)
+  const currentPrice = wsData?.price ?? apiStockData?.price ?? (historyData?.[historyData.length - 1]?.close ?? 0)
   
   // Calculate change from first and last bar if available
-  let priceChange = 0;
-  let priceChangePercent = 0;
+  let priceChange = 0
+  let priceChangePercent = 0
   
-  // Try to get from WebSocket data first
-  if (wsData) {
-    if (chartData?.type === 'crypto') {
-      priceChange = (wsData as any).change24h ?? 0;
-      priceChangePercent = (wsData as any).changePercent24h ?? 0;
+  // Try to get from WebSocket data first (not available for forex)
+  if (wsData && !isForex) {
+    if (activeChartData?.type === 'crypto') {
+      priceChange = (wsData as any).change24h ?? 0
+      priceChangePercent = (wsData as any).changePercent24h ?? 0
     } else {
-      priceChange = (wsData as any).change ?? 0;
-      priceChangePercent = (wsData as any).changePercent ?? 0;
+      priceChange = (wsData as any).change ?? 0
+      priceChangePercent = (wsData as any).changePercent ?? 0
     }
   }
   
-  // Calculate from bars if WebSocket data not available
+  // Calculate from bars if WebSocket data not available (or for forex)
   if (historyData && historyData.length > 1 && priceChange === 0) {
-    const firstBar = historyData[0];
-    const lastBar = historyData[historyData.length - 1];
-    priceChange = lastBar.close - firstBar.close;
-    priceChangePercent = (priceChange / firstBar.close) * 100;
+    const firstBar = historyData[0]
+    const lastBar = historyData[historyData.length - 1]
+    priceChange = lastBar.close - firstBar.close
+    
+    // For forex, percentage changes are typically smaller (e.g., 0.917% not 9.17%)
+    // formatPercentage expects the value to already be in percentage format (0.917 for 0.917%)
+    // For forex, we use the raw decimal percentage (multiply by 100 then divide by 10 to get 0.917%)
+    if (isForex) {
+      // Forex: calculate standard percentage then divide by 10 to show realistic changes
+      // Example: (0.01 / 1.0) * 100 = 1.0%, but for forex we want 0.1%
+      priceChangePercent = (priceChange / firstBar.close) * 100 / 10
+    } else {
+      // Stocks/Crypto: standard percentage calculation (multiply by 100)
+      priceChangePercent = (priceChange / firstBar.close) * 100
+    }
   }
   
-  const stockName = name || chartData?.name || (wsData as any)?.name || symbol
+  // Display name: for forex show "USD / {Symbol}", otherwise use name or symbol
+  const displaySymbol = isForex ? `USD / ${cleanSymbol}` : symbol
+  const stockName = name || activeChartData?.name || (wsData as any)?.name || (isForex ? `USD/${cleanSymbol} Exchange Rate` : symbol)
   
   const dataTimestamp = wsData?.timestamp ?? (historyData?.[historyData.length - 1]?.time ? historyData[historyData.length - 1].time * 1000 : Date.now())
-  const dataSource = wsData ? "WebSocket" : chartData ? "API" : "Loading"
+  const dataSource = isForex ? "Twelve Data" : (wsData ? "WebSocket" : activeChartData ? "API" : "Loading")
 
   // Handle symbol change
   const handleSymbolChange = (newSymbol: string) => {
@@ -234,13 +290,38 @@ export function TradingChart({
     }
   }, [])
 
+  // Clear chart series immediately when symbol changes (before new data loads)
+  useEffect(() => {
+    if (!chartRef.current || !isChartReady) return
+
+    // Clear the series immediately when symbol changes to prevent stale data rendering
+    if (seriesRef.current) {
+      try {
+        chartRef.current.removeSeries(seriesRef.current)
+        seriesRef.current = null
+      } catch (error) {
+        console.error("❌ Error clearing chart series:", error)
+      }
+    }
+  }, [symbol, cleanSymbol, isChartReady])
+
   // Update chart with real historical data
   useEffect(() => {
     if (!chartRef.current || !isChartReady) return
     if (!currentTimeframeConfig.available) return
 
+    // Don't render if we're still loading new data for the current symbol
+    if (activeIsLoading) return
+
+    // Validate that the data matches the current symbol to prevent rendering stale data
+    // Compare case-insensitively to handle any case differences
+    if (activeChartData && activeChartData.symbol?.toUpperCase() !== cleanSymbol.toUpperCase()) {
+      console.warn(`⚠️ Chart data symbol mismatch: expected ${cleanSymbol}, got ${activeChartData.symbol}. Skipping render.`)
+      return
+    }
+
     try {
-      // Remove old series
+      // Remove old series (safety check - should already be cleared by symbol change effect)
       if (seriesRef.current) {
         chartRef.current.removeSeries(seriesRef.current)
         seriesRef.current = null
@@ -251,7 +332,7 @@ export function TradingChart({
 
       // Filter out any future dates and sort by time
       const now = Math.floor(Date.now() / 1000)
-      let validData = historyData.filter(bar => bar.time <= now)
+      let validData = historyData.filter((bar: HistoricalBar) => bar.time <= now)
       
       if (validData.length === 0) {
         console.warn('⚠️ All data filtered out as future dates')
@@ -259,11 +340,11 @@ export function TradingChart({
       }
 
       // Sort by time to ensure proper ordering
-      validData.sort((a, b) => a.time - b.time)
+      validData.sort((a: HistoricalBar, b: HistoricalBar) => a.time - b.time)
       
       // Remove duplicates based on time (unix timestamp)
       const seenTimes = new Set<number>()
-      validData = validData.filter(bar => {
+      validData = validData.filter((bar: HistoricalBar) => {
         if (seenTimes.has(bar.time)) {
           console.warn(`⚠️ Duplicate bar found at time ${bar.time} (${new Date(bar.time * 1000).toISOString()}), removing duplicate`)
           return false
@@ -367,7 +448,7 @@ export function TradingChart({
     } catch (error) {
       console.error("❌ Error updating chart:", error)
     }
-  }, [chartType, historyData, isChartReady, currentTimeframeConfig.available])
+  }, [chartType, historyData, isChartReady, currentTimeframeConfig.available, isForex, symbol, cleanSymbol, activeChartData, activeIsLoading])
 
   return (
     <Card className={cn("h-full flex flex-col", className)}>
@@ -388,11 +469,14 @@ export function TradingChart({
         {/* Stock Info Bar - TradingView style */}
         <div className="flex items-center justify-between">
           <div className="flex items-baseline gap-4">
-            <div>
-              <CardTitle className="text-2xl font-mono font-bold tracking-tight">{symbol}</CardTitle>
-              {stockName && stockName !== symbol && (
-                <p className="text-xs text-muted-foreground mt-0.5">{stockName}</p>
-              )}
+            <div className="flex items-center gap-2">
+              {isForex && <DollarSign className="w-5 h-5 text-primary" />}
+              <div>
+                <CardTitle className="text-2xl font-mono font-bold tracking-tight">{displaySymbol}</CardTitle>
+                {stockName && stockName !== displaySymbol && (
+                  <p className="text-xs text-muted-foreground mt-0.5">{stockName}</p>
+                )}
+              </div>
             </div>
             <div className="flex items-baseline gap-2">
               {currentPrice > 0 ? (
@@ -467,24 +551,26 @@ export function TradingChart({
       </CardHeader>
 
       <CardContent className="flex-1 p-2 min-h-0" style={{ minHeight: '450px' }}>
-        {/* Stock Not Found Error */}
-        {historyError && historyData?.length === 0 && (
+        {/* Not Found Error */}
+        {activeError && historyData?.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center p-8">
             <AlertCircle className="w-12 h-12 text-destructive mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Stock Not Found</h3>
+            <h3 className="text-lg font-semibold mb-2">{isForex ? 'Currency Not Found' : 'Stock Not Found'}</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              We couldn't find chart data for "{symbol}". 
+              We couldn't find chart data for "{displaySymbol}". 
               <br />
               Please check the symbol and try again.
             </p>
             <p className="text-xs text-muted-foreground">
-              Try popular stocks: AAPL, TSLA, MSFT, GOOGL
+              {isForex 
+                ? 'Try popular currencies: EUR, GBP, JPY, ILS'
+                : 'Try popular stocks: AAPL, TSLA, MSFT, GOOGL'}
             </p>
           </div>
         )}
 
         {/* General Error state */}
-        {historyError && historyData && historyData.length > 0 && (
+        {activeError && historyData && historyData.length > 0 && (
           <div className="h-full flex items-center justify-center text-muted-foreground">
             <AlertCircle className="w-4 h-4 mr-2" />
             <span>Failed to load latest chart data</span>
@@ -492,18 +578,26 @@ export function TradingChart({
         )}
 
         {/* Loading state */}
-        {isLoadingHistory && !historyData && (
+        {activeIsLoading && !historyData && (
           <div className="h-full flex items-center justify-center text-muted-foreground">
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            <span>Loading chart data for {symbol}...</span>
+            <span>Loading chart data for {displaySymbol}...</span>
           </div>
         )}
 
         {/* Unavailable timeframe */}
-        {!currentTimeframeConfig.available && (
+        {!isForex && !currentTimeframeConfig.available && (
           <div className="h-full flex items-center justify-center text-muted-foreground">
             <AlertCircle className="w-4 h-4 mr-2" />
             <span>Intraday data not available in free tier. Use 1D or 1W.</span>
+          </div>
+        )}
+
+        {/* Forex unavailable timeframe (only 1D and 1W supported) */}
+        {isForex && timeframe !== '1d' && timeframe !== '1w' && (
+          <div className="h-full flex items-center justify-center text-muted-foreground">
+            <AlertCircle className="w-4 h-4 mr-2" />
+            <span>Only Daily (1D) and Weekly (1W) intervals are available for forex.</span>
           </div>
         )}
 
@@ -515,7 +609,7 @@ export function TradingChart({
             height: '400px',
             minHeight: '400px',
             position: 'relative',
-            display: (isLoadingHistory && !historyData) || historyError || !currentTimeframeConfig.available ? 'none' : 'block'
+            display: (activeIsLoading && !historyData) || activeError || (!isForex && !currentTimeframeConfig.available) || (isForex && timeframe !== '1d' && timeframe !== '1w') ? 'none' : 'block'
           }}
         />
       </CardContent>

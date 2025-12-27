@@ -262,9 +262,16 @@ export interface PortfolioSummary {
   totalGainLossPercent: number
 }
 
+export interface PortfolioBalance {
+  initialCash: number
+  cash: number
+  invested: number
+}
+
 export interface PortfolioResponse {
   entries: PortfolioEntry[]
   summary: PortfolioSummary
+  balance: PortfolioBalance
 }
 
 export interface AddPortfolioEntryParams {
@@ -276,5 +283,9 @@ export interface AddPortfolioEntryParams {
 export interface UpdatePortfolioEntryParams {
   shares?: number
   averagePrice?: number
+}
+
+export interface SetInitialCashParams {
+  initialCash: number
 }
 

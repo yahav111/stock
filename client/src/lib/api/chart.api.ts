@@ -18,6 +18,19 @@ export interface ChartDataResponse {
   name?: string;
 }
 
+export interface ForexChartDataParams {
+  symbol: string;
+  interval?: '1day' | '1week';
+}
+
+export interface ForexChartDataResponse {
+  symbol: string;
+  pair: string;
+  type: 'forex';
+  bars: HistoricalBar[];
+  name?: string;
+}
+
 /**
  * Get unified chart data (stocks or crypto)
  */
@@ -30,7 +43,20 @@ export async function getChartData(params: ChartDataParams): Promise<ChartDataRe
   return unwrapResponse(response.data);
 }
 
+/**
+ * Get forex chart data (always relative to USD)
+ */
+export async function getForexChartData(params: ForexChartDataParams): Promise<ForexChartDataResponse> {
+  const { symbol, interval = '1day' } = params;
+  const response = await apiClient.get<ApiSuccessResponse<ForexChartDataResponse>>(
+    `/chart/forex/${encodeURIComponent(symbol.toUpperCase())}`,
+    { params: { interval } }
+  );
+  return unwrapResponse(response.data);
+}
+
 export const chartApi = {
   getChartData,
+  getForexChartData,
 };
 

@@ -6,6 +6,13 @@
 import type { Request, Response } from 'express';
 import { successResponse, HttpStatus } from '../../lib/api-response.js';
 import * as currencyService from '../../services/external-apis/openexchange.service.js';
+import {
+  getIntradayForex,
+  getDailyForex,
+  formatForRecharts,
+  formatDailyForRecharts,
+  getIntradayCache,
+} from '../../services/external-apis/alphavantage.service.js';
 import { DEFAULT_CURRENCIES } from '../../config/constants.js';
 import type {
   GetRatesQuery,
@@ -87,5 +94,88 @@ export async function getDefaults(_req: Request, res: Response) {
     rates: filteredRates,
     timestamp: Date.now(),
   }));
+}
+
+/**
+ * GET /api/currencies/forex/intraday?from=USD&to=ILS
+ * Get intraday Forex data (last 24 hours, 5-minute intervals)
+ * Formatted for Recharts: { time: number, value: number }[]
+ */
+export async function getForexIntraday(
+  req: Request,
+  res: Response
+) {
+  const from = (req.query.from as string) || 'USD';
+  const to = (req.query.to as string) || 'ILS';
+  
+  try {
+    // Try to fetch fresh data, but use cache if rate limited
+    const intradayData = await getIntradayForex(from, to, '5min');
+    
+    // Format for Recharts
+    const chartData = formatForRecharts(intradayData);
+    
+    res.status(HttpStatus.OK).json(successResponse({
+      from,
+      to,
+      data: chartData,
+      raw: intradayData,
+      timestamp: Date.now(),
+    }));
+  } catch (error: any) {
+    // Fallback to cache
+    const cachedData = getIntradayCache();
+    if (cachedData.length > 0) {
+      const chartData = formatForRecharts(cachedData);
+      res.status(HttpStatus.OK).json(successResponse({
+        from,
+        to,
+        data: chartData,
+        raw: cachedData,
+        timestamp: Date.now(),
+        cached: true,
+      }));
+    } else {
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: 'Failed to fetch Forex data',
+        message: error.message || 'Unknown error',
+      });
+    }
+  }
+}
+
+/**
+ * GET /api/currencies/forex/daily?from=USD&to=ILS
+ * Get daily Forex data (last 7 days)
+ * Formatted for Recharts: { time: number, value: number }[]
+ */
+export async function getForexDaily(
+  req: Request,
+  res: Response
+) {
+  const from = (req.query.from as string) || 'USD';
+  const to = (req.query.to as string) || 'ILS';
+  
+  try {
+    const dailyData = await getDailyForex(from, to);
+    
+    // Format for Recharts
+    const chartData = formatDailyForRecharts(dailyData);
+    
+    res.status(HttpStatus.OK).json(successResponse({
+      from,
+      to,
+      data: chartData,
+      raw: dailyData,
+      timestamp: Date.now(),
+    }));
+  } catch (error: any) {
+    res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      error: 'Failed to fetch daily Forex data',
+      message: error.message || 'Unknown error',
+    });
+  }
 }
 

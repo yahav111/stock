@@ -3,11 +3,12 @@
  * Works for both stocks and crypto
  */
 import { useQuery } from '@tanstack/react-query';
-import { chartApi, type ChartDataParams } from '../../lib/api/chart.api';
+import { chartApi, type ChartDataParams, type ForexChartDataParams } from '../../lib/api/chart.api';
 
 export const chartKeys = {
   all: ['chart'] as const,
   chart: (params: ChartDataParams) => [...chartKeys.all, params] as const,
+  forexChart: (params: ForexChartDataParams) => [...chartKeys.all, 'forex', params] as const,
 };
 
 /**
@@ -40,6 +41,32 @@ export function useChart(params: ChartDataParams, enabled = true) {
       : params.range === '1W'
       ? 6 * 60 * 60 * 1000   // Refetch every 6 hours for weekly
       : false,                // No auto-refetch for monthly
+  });
+}
+
+/**
+ * Hook to get forex chart data
+ * Automatically refetches when params change (symbol, interval)
+ */
+export function useForexChart(params: ForexChartDataParams, enabled = true) {
+  // Calculate staleTime based on interval
+  const staleTime = params.interval === '1day' 
+    ? 5 * 60 * 1000        // 5 minutes for daily (matches cache TTL)
+    : 30 * 60 * 1000;      // 30 minutes for weekly
+
+  return useQuery({
+    queryKey: chartKeys.forexChart(params),
+    queryFn: () => chartApi.getForexChartData(params),
+    enabled: !!params.symbol && enabled,
+    staleTime,
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    retry: 1,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    // Refetch interval matches cache TTL for daily
+    refetchInterval: params.interval === '1day' 
+      ? 5 * 60 * 1000       // Refetch every 5 minutes for daily (matches cache)
+      : 30 * 60 * 1000,     // Refetch every 30 minutes for weekly
   });
 }
 

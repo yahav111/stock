@@ -11,3 +11,14 @@ export const getChartQuery = z.object({
 
 export type GetChartQuery = z.infer<typeof getChartQuery>;
 
+export const getForexChartParams = z.object({
+  symbol: z.string().min(1).max(10),
+});
+
+export const getForexChartQuery = z.object({
+  interval: z.enum(['1day', '1week']).optional().default('1day'),
+});
+
+export type GetForexChartParams = z.infer<typeof getForexChartParams>;
+export type GetForexChartQuery = z.infer<typeof getForexChartQuery>;
+

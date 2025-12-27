@@ -5,6 +5,7 @@ import * as usersSchema from './schema/users';
 import * as preferencesSchema from './schema/preferences';
 import * as uploadsSchema from './schema/uploads';
 import * as portfolioSchema from './schema/portfolio';
+import * as portfolioBalanceSchema from './schema/portfolio-balance';
 
 // For query purposes
 const queryClient = postgres(env.DATABASE_URL, {
@@ -19,6 +20,7 @@ export const db = drizzle(queryClient, {
     ...preferencesSchema,
     ...uploadsSchema,
     ...portfolioSchema,
+    ...portfolioBalanceSchema,
   },
 });
 
@@ -26,6 +28,7 @@ export * from './schema/users';
 export * from './schema/preferences';
 export * from './schema/uploads';
 export * from './schema/portfolio';
+export * from './schema/portfolio-balance';
 
 // Test connection
 export async function testConnection() {

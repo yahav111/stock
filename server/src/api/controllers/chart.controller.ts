@@ -6,7 +6,8 @@ import type { Request, Response } from 'express';
 import { successResponse, HttpStatus } from '../../lib/api-response.js';
 import { ApiError } from '../../lib/api-error.js';
 import { chartService } from '../../services/chart/chart.service.js';
-import type { GetChartQuery } from '../validators/chart.validators.js';
+import { getForexHistory } from '../../services/external-apis/twelvedata.service.js';
+import type { GetChartQuery, GetForexChartParams, GetForexChartQuery } from '../validators/chart.validators.js';
 
 /**
  * GET /api/chart?symbol=XXX&range=1D
@@ -39,13 +40,50 @@ export async function getChart(
     });
 
     res.status(HttpStatus.OK).json(successResponse(chartData, {
-      symbol: chartData.symbol,
-      type: chartData.type,
-      barCount: chartData.bars.length,
+      total: chartData.bars.length,
     }));
   } catch (error: any) {
     console.error(`Error fetching chart data for ${symbol}:`, error);
-    throw ApiError.internalServerError(`Failed to fetch chart data: ${error.message}`);
+    throw ApiError.internal(`Failed to fetch chart data: ${error.message}`);
+  }
+}
+
+/**
+ * GET /api/chart/forex/:symbol?interval=1day
+ * Get forex chart data (always relative to USD)
+ */
+export async function getForexChart(
+  req: Request<GetForexChartParams, object, object, GetForexChartQuery>,
+  res: Response
+) {
+  const { symbol } = req.params;
+  const { interval = '1day' } = req.query;
+
+  if (!symbol) {
+    throw ApiError.badRequest('Symbol parameter is required');
+  }
+
+  try {
+    // Always fetch USD/{symbol}
+    const bars = await getForexHistory(symbol, interval);
+
+    // Normalize symbol (remove USD prefix if present)
+    const cleanSymbol = symbol.toUpperCase().replace(/^USD\//, '').trim();
+    const pair = `USD/${cleanSymbol}`;
+
+    res.status(HttpStatus.OK).json(successResponse({
+      symbol: cleanSymbol,
+      pair,
+      type: 'forex' as const,
+      bars,
+      name: `${pair} Exchange Rate`,
+    }, {
+      total: bars.length,
+    }));
+  } catch (error: any) {
+    console.error(`Error fetching forex chart data for ${symbol}:`, error);
+    const errorMessage = error?.message || 'Unknown error occurred';
+    throw ApiError.internal(`Failed to fetch forex chart data: ${errorMessage}`);
   }
 }
 

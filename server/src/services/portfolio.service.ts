@@ -4,7 +4,7 @@
  */
 
 import { eq, and } from 'drizzle-orm';
-import { db, portfolio } from '../db/index.js';
+import { db, portfolio, portfolioBalance } from '../db/index.js';
 import * as finnhubService from './external-apis/finnhub.service.js';
 import * as polygonService from './external-apis/polygon.service.js';
 import type { PortfolioEntry } from '../types/index.js';
@@ -23,6 +23,115 @@ function calculateGainLoss(
     : 0;
   
   return { gainLoss, gainLossPercent };
+}
+
+/**
+ * Get or create portfolio balance for a user
+ */
+async function getOrCreatePortfolioBalance(userId: string) {
+  try {
+    const existing = await db
+      .select()
+      .from(portfolioBalance)
+      .where(eq(portfolioBalance.userId, userId))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      return {
+        initialCash: Number(existing[0].initialCash),
+        cash: Number(existing[0].cash),
+        invested: Number(existing[0].invested),
+      };
+    }
+    
+    // Create new balance with default values
+    try {
+      await db.insert(portfolioBalance).values({
+        userId,
+        initialCash: '0',
+        cash: '0',
+        invested: '0',
+      });
+    } catch (insertError: any) {
+      // If insert fails (e.g., duplicate key), try to fetch again
+      if (insertError?.code === '23505' || insertError?.message?.includes('unique')) {
+        const retry = await db
+          .select()
+          .from(portfolioBalance)
+          .where(eq(portfolioBalance.userId, userId))
+          .limit(1);
+        
+        if (retry.length > 0) {
+          return {
+            initialCash: Number(retry[0].initialCash),
+            cash: Number(retry[0].cash),
+            invested: Number(retry[0].invested),
+          };
+        }
+      }
+      throw insertError;
+    }
+    
+    return {
+      initialCash: 0,
+      cash: 0,
+      invested: 0,
+    };
+  } catch (error: any) {
+    // If table doesn't exist, return default values
+    if (error?.code === '42P01' || error?.message?.includes('does not exist')) {
+      console.warn('⚠️ portfolio_balance table does not exist. Please run migration.');
+      return {
+        initialCash: 0,
+        cash: 0,
+        invested: 0,
+      };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Update portfolio balance
+ */
+async function updatePortfolioBalance(
+  userId: string,
+  updates: { initialCash?: number; cash?: number; invested?: number }
+): Promise<void> {
+  const updateData: Record<string, string | Date> = {
+    updatedAt: new Date(),
+  };
+  
+  if (updates.initialCash !== undefined) {
+    updateData.initialCash = updates.initialCash.toString();
+  }
+  if (updates.cash !== undefined) {
+    updateData.cash = updates.cash.toString();
+  }
+  if (updates.invested !== undefined) {
+    updateData.invested = updates.invested.toString();
+  }
+  
+  await db
+    .update(portfolioBalance)
+    .set(updateData)
+    .where(eq(portfolioBalance.userId, userId));
+}
+
+/**
+ * Recalculate invested amount from all portfolio entries
+ */
+async function recalculateInvested(userId: string): Promise<number> {
+  const entries = await db
+    .select()
+    .from(portfolio)
+    .where(eq(portfolio.userId, userId));
+  
+  const totalInvested = entries.reduce((sum, entry) => {
+    return sum + (Number(entry.averagePrice) * Number(entry.shares));
+  }, 0);
+  
+  return totalInvested;
 }
 
 /**
@@ -121,6 +230,17 @@ export async function addOrUpdatePortfolioEntry(
   shares: number,
   averagePrice: number
 ): Promise<PortfolioEntry> {
+  // Get portfolio balance
+  const balance = await getOrCreatePortfolioBalance(userId);
+  
+  // Calculate investment amount for new shares
+  const investmentAmount = shares * averagePrice;
+  
+  // Check if user has enough cash
+  if (balance.cash < investmentAmount) {
+    throw new Error(`Insufficient cash. Available: ${balance.cash.toFixed(2)}, Required: ${investmentAmount.toFixed(2)}`);
+  }
+  
   const existing = await db
     .select()
     .from(portfolio)
@@ -138,10 +258,11 @@ export async function addOrUpdatePortfolioEntry(
     // Update existing entry - recalculate average price
     const existingShares = Number(existing[0].shares);
     const existingAvgPrice = Number(existing[0].averagePrice);
+    const existingInvested = existingShares * existingAvgPrice;
     
     // Weighted average: (oldShares * oldAvgPrice + newShares * newPrice) / (oldShares + newShares)
     const totalShares = existingShares + shares;
-    const totalCost = (existingShares * existingAvgPrice) + (shares * averagePrice);
+    const totalCost = existingInvested + investmentAmount;
     const newAveragePrice = totalCost / totalShares;
     
     const finalShares = totalShares;
@@ -170,6 +291,13 @@ export async function addOrUpdatePortfolioEntry(
           eq(portfolio.symbol, symbol)
         )
       );
+    
+    // Update balance: reduce cash, increase invested
+    const newInvested = await recalculateInvested(userId);
+    await updatePortfolioBalance(userId, {
+      cash: balance.cash - investmentAmount,
+      invested: newInvested,
+    });
     
     const updated = await db
       .select()
@@ -212,6 +340,13 @@ export async function addOrUpdatePortfolioEntry(
       gainLossPercent: gainLossPercent.toString(),
     });
     
+    // Update balance: reduce cash, increase invested
+    const newInvested = await recalculateInvested(userId);
+    await updatePortfolioBalance(userId, {
+      cash: balance.cash - investmentAmount,
+      invested: newInvested,
+    });
+    
     const created = await db
       .select()
       .from(portfolio)
@@ -245,6 +380,7 @@ export async function updatePortfolioEntry(
   symbol: string,
   updates: { shares?: number; averagePrice?: number }
 ): Promise<PortfolioEntry> {
+  const balance = await getOrCreatePortfolioBalance(userId);
   const existing = await db
     .select()
     .from(portfolio)
@@ -260,8 +396,21 @@ export async function updatePortfolioEntry(
     throw new Error('Portfolio entry not found');
   }
   
-  const currentShares = updates.shares !== undefined ? updates.shares : Number(existing[0].shares);
-  const currentAvgPrice = updates.averagePrice !== undefined ? updates.averagePrice : Number(existing[0].averagePrice);
+  const oldShares = Number(existing[0].shares);
+  const oldAvgPrice = Number(existing[0].averagePrice);
+  const oldInvested = oldShares * oldAvgPrice;
+  
+  const currentShares = updates.shares !== undefined ? updates.shares : oldShares;
+  const currentAvgPrice = updates.averagePrice !== undefined ? updates.averagePrice : oldAvgPrice;
+  const newInvested = currentShares * currentAvgPrice;
+  
+  // Calculate difference in investment
+  const investmentDiff = newInvested - oldInvested;
+  
+  // If increasing investment, check cash
+  if (investmentDiff > 0 && balance.cash < investmentDiff) {
+    throw new Error(`Insufficient cash. Available: ${balance.cash.toFixed(2)}, Required: ${investmentDiff.toFixed(2)}`);
+  }
   
   const currentPrice = await fetchCurrentPrice(symbol);
   const finalCurrentPrice = currentPrice || currentAvgPrice;
@@ -288,6 +437,13 @@ export async function updatePortfolioEntry(
         eq(portfolio.symbol, symbol)
       )
     );
+  
+  // Update balance
+  const totalInvested = await recalculateInvested(userId);
+  await updatePortfolioBalance(userId, {
+    cash: balance.cash - investmentDiff,
+    invested: totalInvested,
+  });
   
   const updated = await db
     .select()
@@ -320,6 +476,27 @@ export async function deletePortfolioEntry(
   userId: string,
   symbol: string
 ): Promise<void> {
+  const balance = await getOrCreatePortfolioBalance(userId);
+  
+  // Get entry to calculate how much to return to cash
+  const existing = await db
+    .select()
+    .from(portfolio)
+    .where(
+      and(
+        eq(portfolio.userId, userId),
+        eq(portfolio.symbol, symbol)
+      )
+    )
+    .limit(1);
+  
+  if (existing.length === 0) {
+    throw new Error('Portfolio entry not found');
+  }
+  
+  const investedAmount = Number(existing[0].shares) * Number(existing[0].averagePrice);
+  
+  // Delete entry
   await db
     .delete(portfolio)
     .where(
@@ -328,5 +505,43 @@ export async function deletePortfolioEntry(
         eq(portfolio.symbol, symbol)
       )
     );
+  
+  // Update balance: return cash, reduce invested
+  const newInvested = await recalculateInvested(userId);
+  await updatePortfolioBalance(userId, {
+    cash: balance.cash + investedAmount,
+    invested: newInvested,
+  });
+}
+
+/**
+ * Get portfolio balance for a user
+ */
+export async function getPortfolioBalance(userId: string) {
+  return await getOrCreatePortfolioBalance(userId);
+}
+
+/**
+ * Set initial cash for a user
+ */
+export async function setInitialCash(userId: string, initialCash: number): Promise<void> {
+  if (initialCash < 0) {
+    throw new Error('Initial cash cannot be negative');
+  }
+  
+  const balance = await getOrCreatePortfolioBalance(userId);
+  
+  // If there are existing investments, we need to adjust
+  const currentTotal = balance.cash + balance.invested;
+  const newCash = initialCash - balance.invested;
+  
+  if (newCash < 0) {
+    throw new Error(`Initial cash (${initialCash}) must be at least equal to current invested amount (${balance.invested.toFixed(2)})`);
+  }
+  
+  await updatePortfolioBalance(userId, {
+    initialCash,
+    cash: newCash,
+  });
 }
 

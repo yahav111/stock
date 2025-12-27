@@ -135,6 +135,11 @@ export interface PortfolioSummary {
   totalCost: number;
   totalGainLoss: number;
   totalGainLossPercent: number;
-  entries: PortfolioEntry[];
+}
+
+export interface PortfolioBalance {
+  initialCash: number;
+  cash: number;
+  invested: number;
 }
 

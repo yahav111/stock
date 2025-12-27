@@ -4,7 +4,9 @@
  * GET    /api/portfolio              - Get all portfolio entries
  * POST   /api/portfolio              - Add or update portfolio entry
  * PUT    /api/portfolio/:symbol      - Update portfolio entry
- * DELETE /api/portfolio/:symbol    - Delete portfolio entry
+ * DELETE /api/portfolio/:symbol      - Delete portfolio entry
+ * POST   /api/portfolio/initial-cash - Set initial cash
+ * GET    /api/portfolio/balance     - Get portfolio balance
  */
 
 import { Router } from 'express';
@@ -47,6 +49,19 @@ router.delete(
   '/:symbol',
   validate({ params: validators.getPortfolioParams }),
   asyncHandler(controller.deletePortfolioEntry)
+);
+
+// POST /api/portfolio/initial-cash - Set initial cash
+router.post(
+  '/initial-cash',
+  validate({ body: validators.setInitialCashBody }),
+  asyncHandler(controller.setInitialCash)
+);
+
+// GET /api/portfolio/balance - Get portfolio balance
+router.get(
+  '/balance',
+  asyncHandler(controller.getPortfolioBalance)
 );
 
 export default router;

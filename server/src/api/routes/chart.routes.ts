@@ -3,6 +3,7 @@
  * Unified chart endpoint for stocks and crypto
  * 
  * GET /api/chart?symbol=XXX&range=1D
+ * GET /api/chart/forex/:symbol - Get forex chart data
  */
 import { Router } from 'express';
 import { asyncHandler } from '../../lib/async-handler.js';
@@ -17,6 +18,16 @@ router.get(
   '/',
   validate({ query: validators.getChartQuery }),
   asyncHandler(controller.getChart)
+);
+
+// GET /api/chart/forex/:symbol - Get forex chart data
+router.get(
+  '/forex/:symbol',
+  validate({ 
+    params: validators.getForexChartParams,
+    query: validators.getForexChartQuery,
+  }),
+  asyncHandler(controller.getForexChart)
 );
 
 export default router;

@@ -1,10 +1,12 @@
 /**
  * Currencies Routes
  * 
- * GET    /api/currencies/rates     - Get exchange rates
- * GET    /api/currencies/defaults  - Get default currency rates
- * GET    /api/currencies/pairs     - Get specific currency pairs
- * POST   /api/currencies/convert   - Convert between currencies
+ * GET    /api/currencies/rates           - Get exchange rates
+ * GET    /api/currencies/defaults       - Get default currency rates
+ * GET    /api/currencies/pairs          - Get specific currency pairs
+ * POST   /api/currencies/convert        - Convert between currencies
+ * GET    /api/currencies/forex/intraday - Get intraday Forex data (24h, 5min intervals)
+ * GET    /api/currencies/forex/daily    - Get daily Forex data (7 days)
  */
 
 import { Router } from 'express';
@@ -40,6 +42,18 @@ router.post(
   '/convert',
   validate({ body: validators.convertBody }),
   asyncHandler(controller.convert as any)
+);
+
+// GET /api/currencies/forex/intraday - Get intraday Forex data
+router.get(
+  '/forex/intraday',
+  asyncHandler(controller.getForexIntraday)
+);
+
+// GET /api/currencies/forex/daily - Get daily Forex data
+router.get(
+  '/forex/daily',
+  asyncHandler(controller.getForexDaily)
 );
 
 export default router;

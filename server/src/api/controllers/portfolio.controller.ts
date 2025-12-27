@@ -12,6 +12,7 @@ import type {
   GetPortfolioParams,
   AddPortfolioBody,
   UpdatePortfolioBody,
+  SetInitialCashBody,
 } from '../validators/portfolio.validators.js';
 
 /**
@@ -24,8 +25,9 @@ export async function getPortfolio(
 ) {
   const userId = req.user.id;
   const entries = await portfolioService.getUserPortfolio(userId);
+  const balance = await portfolioService.getPortfolioBalance(userId);
   
-  // Calculate totals
+  // Calculate totals (only on invested amount, not including cash)
   const totalValue = entries.reduce((sum, entry) => sum + (entry.currentPrice * entry.shares), 0);
   const totalCost = entries.reduce((sum, entry) => sum + (entry.averagePrice * entry.shares), 0);
   const totalGainLoss = entries.reduce((sum, entry) => sum + entry.gainLoss, 0);
@@ -38,6 +40,11 @@ export async function getPortfolio(
       totalCost,
       totalGainLoss,
       totalGainLossPercent,
+    },
+    balance: {
+      initialCash: balance.initialCash,
+      cash: balance.cash,
+      invested: balance.invested,
     },
   }));
 }
@@ -101,5 +108,45 @@ export async function deletePortfolioEntry(
   await portfolioService.deletePortfolioEntry(userId, symbol);
   
   res.status(HttpStatus.OK).json(successResponse({ message: 'Portfolio entry deleted' }));
+}
+
+/**
+ * POST /api/portfolio/initial-cash
+ * Set initial cash amount for the portfolio
+ */
+export async function setInitialCash(
+  req: AuthenticatedRequest<object, object, SetInitialCashBody>,
+  res: Response
+) {
+  const userId = req.user.id;
+  const { initialCash } = req.body;
+  
+  await portfolioService.setInitialCash(userId, initialCash);
+  
+  const balance = await portfolioService.getPortfolioBalance(userId);
+  
+  res.status(HttpStatus.OK).json(successResponse({
+    initialCash: balance.initialCash,
+    cash: balance.cash,
+    invested: balance.invested,
+  }));
+}
+
+/**
+ * GET /api/portfolio/balance
+ * Get portfolio balance (cash and invested)
+ */
+export async function getPortfolioBalance(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const userId = req.user.id;
+  const balance = await portfolioService.getPortfolioBalance(userId);
+  
+  res.status(HttpStatus.OK).json(successResponse({
+    initialCash: balance.initialCash,
+    cash: balance.cash,
+    invested: balance.invested,
+  }));
 }
 

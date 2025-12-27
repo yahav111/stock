@@ -5,9 +5,10 @@
  * import { useStock, useDefaultStocks, useAuth } from '@/hooks/api'
  */
 
-// Unified Chart (Stocks & Crypto)
+// Unified Chart (Stocks & Crypto & Forex)
 export {
   useChart,
+  useForexChart,
   chartKeys,
 } from './use-chart';
 

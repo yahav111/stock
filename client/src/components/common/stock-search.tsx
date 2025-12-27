@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react"
-import { Search, TrendingUp, Clock, X, Coins } from "lucide-react"
+import { Search, TrendingUp, Clock, X, Coins, DollarSign } from "lucide-react"
 import { Input } from "../ui/input"
 import { Button } from "../ui/button"
+import { Badge } from "../ui/badge"
 import { cn } from "../../lib/utils"
 import { useStockSearch } from "../../hooks/api"
 
@@ -27,6 +28,41 @@ const SUPPORTED_CRYPTOS = [
   'LINK', 'UNI', 'ATOM', 'LTC', 'BCH', 'ALGO', 'ETC', 'XLM', 'FIL', 'AAVE',
   'SAND', 'MANA', 'AXS', 'THETA', 'EOS',
 ] as const;
+
+// Supported forex currencies (common major pairs relative to USD)
+const SUPPORTED_FOREX = [
+  'EUR', 'GBP', 'JPY', 'ILS', 'CHF', 'CAD', 'AUD', 'CNY', 'INR', 'KRW',
+  'SGD', 'HKD', 'SEK', 'NOK', 'DKK', 'NZD', 'MXN', 'BRL', 'RUB', 'ZAR',
+  'TRY', 'PLN', 'THB', 'IDR', 'PHP',
+] as const;
+
+const FOREX_NAMES: Record<string, string> = {
+  EUR: 'Euro',
+  GBP: 'British Pound',
+  JPY: 'Japanese Yen',
+  ILS: 'Israeli Shekel',
+  CHF: 'Swiss Franc',
+  CAD: 'Canadian Dollar',
+  AUD: 'Australian Dollar',
+  CNY: 'Chinese Yuan',
+  INR: 'Indian Rupee',
+  KRW: 'South Korean Won',
+  SGD: 'Singapore Dollar',
+  HKD: 'Hong Kong Dollar',
+  SEK: 'Swedish Krona',
+  NOK: 'Norwegian Krone',
+  DKK: 'Danish Krone',
+  NZD: 'New Zealand Dollar',
+  MXN: 'Mexican Peso',
+  BRL: 'Brazilian Real',
+  RUB: 'Russian Ruble',
+  ZAR: 'South African Rand',
+  TRY: 'Turkish Lira',
+  PLN: 'Polish Zloty',
+  THB: 'Thai Baht',
+  IDR: 'Indonesian Rupiah',
+  PHP: 'Philippine Peso',
+};
 
 const CRYPTO_NAMES: Record<string, string> = {
   BTC: 'Bitcoin',
@@ -74,10 +110,17 @@ export function StockSearch({
     return SUPPORTED_CRYPTOS.includes(upperQuery as any);
   }, [query]);
 
-  // Fetch stock search results (only if not exact crypto match)
+  // Check if query matches a supported forex currency
+  const isForexMatch = useMemo(() => {
+    const upperQuery = query.toUpperCase().trim();
+    // Exclude USD as it's the base currency
+    return upperQuery !== 'USD' && SUPPORTED_FOREX.includes(upperQuery as any);
+  }, [query]);
+
+  // Fetch stock search results (only if not exact crypto or forex match)
   const { data: searchResults, isLoading } = useStockSearch(
     { q: query, limit: 8 },
-    query.length >= 1 && isOpen && !isCryptoMatch
+    query.length >= 1 && isOpen && !isCryptoMatch && !isForexMatch
   )
 
   // Get recently viewed from localStorage
@@ -168,8 +211,39 @@ export function StockSearch({
               </div>
             )}
 
+            {/* Forex Match - Show directly */}
+            {query && isForexMatch && (
+              <div className="py-1">
+                <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border/50">
+                  <DollarSign className="w-3.5 h-3.5" />
+                  <span>Currency</span>
+                </div>
+                <button
+                  onClick={() => handleSearch(query.toUpperCase())}
+                  className="w-full text-left px-3 py-3 hover:bg-accent/50 active:bg-accent transition-colors group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                      <DollarSign className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-mono font-semibold text-sm group-hover:text-primary transition-colors">
+                        USD / {query.toUpperCase()}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate mt-0.5">
+                        {FOREX_NAMES[query.toUpperCase()] || 'Currency'}
+                      </div>
+                    </div>
+                    <Badge variant="secondary" className="text-xs shrink-0 px-2 py-1">
+                      Currency
+                    </Badge>
+                  </div>
+                </button>
+              </div>
+            )}
+
             {/* Crypto Match - Show directly */}
-            {query && isCryptoMatch && (
+            {query && isCryptoMatch && !isForexMatch && (
               <div className="py-1">
                 <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border/50">
                   <Coins className="w-3.5 h-3.5" />
@@ -200,7 +274,7 @@ export function StockSearch({
             )}
 
             {/* Search Results - Stocks */}
-            {query && !isCryptoMatch && (
+            {query && !isCryptoMatch && !isForexMatch && (
               <div className="py-1">
                 {isLoading && (
                   <div className="px-4 py-8 text-sm text-muted-foreground text-center">
@@ -217,27 +291,38 @@ export function StockSearch({
                       <Search className="w-3.5 h-3.5" />
                       <span>Search Results</span>
                     </div>
-                    {searchResults.map((result: SearchResult) => (
-                      <button
-                        key={result.symbol}
-                        onClick={() => handleSearch(result.symbol)}
-                        className="w-full text-left px-3 py-3 hover:bg-accent/50 active:bg-accent transition-colors group"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-mono font-semibold text-sm group-hover:text-primary transition-colors">
-                              {result.symbol}
+                    {searchResults.map((result: SearchResult) => {
+                      // Check if this stock result is actually a forex currency
+                      const isForexResult = SUPPORTED_FOREX.includes(result.symbol.toUpperCase() as any);
+                      
+                      return (
+                        <button
+                          key={result.symbol}
+                          onClick={() => handleSearch(result.symbol)}
+                          className="w-full text-left px-3 py-3 hover:bg-accent/50 active:bg-accent transition-colors group"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-mono font-semibold text-sm group-hover:text-primary transition-colors">
+                                {isForexResult ? `USD / ${result.symbol}` : result.symbol}
+                              </div>
+                              <div className="text-xs text-muted-foreground truncate mt-0.5">
+                                {isForexResult ? FOREX_NAMES[result.symbol.toUpperCase()] || 'Currency' : result.name}
+                              </div>
                             </div>
-                            <div className="text-xs text-muted-foreground truncate mt-0.5">
-                              {result.name}
-                            </div>
+                            {isForexResult ? (
+                              <Badge variant="secondary" className="text-xs shrink-0 px-2 py-1">
+                                Currency
+                              </Badge>
+                            ) : (
+                              <div className="text-xs text-muted-foreground shrink-0 px-2 py-1 rounded bg-muted/50">
+                                {result.exchange}
+                              </div>
+                            )}
                           </div>
-                          <div className="text-xs text-muted-foreground shrink-0 px-2 py-1 rounded bg-muted/50">
-                            {result.exchange}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
+                        </button>
+                      );
+                    })}
                   </>
                 )}
 

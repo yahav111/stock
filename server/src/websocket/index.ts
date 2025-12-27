@@ -7,6 +7,11 @@ import {
 } from '../services/external-apis/finnhub.service.js';
 import { getMultipleCryptoPrices } from '../services/external-apis/cryptocompare.service.js';
 import { getExchangeRates } from '../services/external-apis/openexchange.service.js';
+import {
+  getIntradayForex,
+  getDailyForex,
+  getCurrencyRateForBroadcast,
+} from '../services/external-apis/alphavantage.service.js';
 import { WS_CONFIG, DEFAULT_STOCKS, DEFAULT_CRYPTOS } from '../config/constants.js';
 import { env } from '../config/env.js';
 import type { WSMessage, WSSubscription, StockQuote } from '../types/index.js';
@@ -105,6 +110,17 @@ export function setupWebSocket(server: Server) {
 
   // Start data polling (includes Finnhub initialization)
   startDataPolling();
+
+  // Initialize Forex data immediately (before first poll)
+  (async () => {
+    try {
+      console.log('💱 [FOREX] Initializing USD/ILS data...');
+      await getIntradayForex('USD', 'ILS', '5min');
+      console.log('✅ [FOREX] Initialized USD/ILS data cache');
+    } catch (error: any) {
+      console.warn('⚠️ [FOREX] Failed to initialize:', error.message || error);
+    }
+  })();
 
   // Start heartbeat
   startHeartbeat();
@@ -279,25 +295,69 @@ function startDataPolling() {
     }
   }, 30000); // 30 seconds
 
-  // Poll currencies every 10 minutes (rates don't change often)
+  // Poll Forex (USD/ILS) every 5 minutes using Alpha Vantage
   currencyInterval = setInterval(async () => {
     if (clients.size === 0) return;
 
     try {
-      console.log('💱 Polling currency rates...');
-      const rates = await getExchangeRates();
-      broadcast('currency-update', { rates, timestamp: Date.now() });
-      console.log('✅ Broadcasted currency rates');
-    } catch (error) {
-      console.error('Error polling currencies:', error);
+      console.log('💱 [FOREX POLLING] Fetching USD/ILS intraday data...');
+      
+      // Fetch latest intraday data (updates dailyCache)
+      const intradayData = await getIntradayForex('USD', 'ILS', '5min');
+      
+      // Get current rate for broadcast
+      const currencyRate = getCurrencyRateForBroadcast();
+      
+      // Broadcast the update
+      broadcast('currency-update', {
+        pair: 'USD/ILS',
+        rate: currencyRate.rate,
+        change: currencyRate.change,
+        changePercent: currencyRate.changePercent,
+        timestamp: Date.now(),
+      });
+      
+      console.log(`✅ [FOREX POLLING] Broadcasted USD/ILS rate: ${currencyRate.rate.toFixed(4)} (${currencyRate.changePercent >= 0 ? '+' : ''}${currencyRate.changePercent.toFixed(2)}%)`);
+    } catch (error: any) {
+      console.error('❌ [FOREX POLLING] Error polling currencies:', error.message || error);
+      
+      // Fallback: broadcast last known rate
+      const fallbackRate = getCurrencyRateForBroadcast();
+      if (fallbackRate.rate > 0) {
+        broadcast('currency-update', {
+          pair: 'USD/ILS',
+          rate: fallbackRate.rate,
+          change: fallbackRate.change || 0,
+          changePercent: fallbackRate.changePercent || 0,
+          timestamp: Date.now(),
+        });
+        console.log('📦 [FOREX POLLING] Broadcasted cached rate due to error');
+      }
     }
-  }, 600000); // 10 minutes
+  }, 300000); // 5 minutes
 
   // Initial fetch after 3 seconds (give time for clients to connect)
   setTimeout(async () => {
     console.log('🚀 Sending initial data to clients...');
     
     try {
+      // Initialize Forex data (USD/ILS)
+      try {
+        console.log('💱 [FOREX INIT] Fetching initial USD/ILS intraday data...');
+        await getIntradayForex('USD', 'ILS', '5min');
+        const initialRate = getCurrencyRateForBroadcast();
+        broadcast('currency-update', {
+          pair: 'USD/ILS',
+          rate: initialRate.rate,
+          change: initialRate.change || 0,
+          changePercent: initialRate.changePercent || 0,
+          timestamp: Date.now(),
+        });
+        console.log(`✅ [FOREX INIT] Initial USD/ILS rate: ${initialRate.rate.toFixed(4)}`);
+      } catch (error: any) {
+        console.warn('⚠️ [FOREX INIT] Failed to fetch initial Forex data:', error.message || error);
+      }
+
       // Send initial stock data - prefer Polygon for multiple stocks (efficient), fallback to Finnhub
       let stocks: StockQuote[] = [];
       
