@@ -4,6 +4,7 @@ import { HomePage } from "./pages/home"
 import { LoginPage } from "./pages/login"
 import { SignupPage } from "./pages/signup"
 import { DashboardPage } from "./pages/dashboard"
+import { CalendarsPage } from "./pages/calendars"
 import { useAuthStore } from "./stores/auth-store"
 
 // Protected route wrapper
@@ -77,6 +78,14 @@ function App() {
           element={
             <ProtectedRoute>
               <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dashboard/calendars"
+          element={
+            <ProtectedRoute>
+              <CalendarsPage />
             </ProtectedRoute>
           }
         />

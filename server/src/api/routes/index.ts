@@ -12,6 +12,7 @@ import preferencesRoutes from './preferences.routes.js';
 import chartRoutes from './chart.routes.js';
 import newsRoutes from './news.routes.js';
 import portfolioRoutes from './portfolio.routes.js';
+import calendarsRoutes from './calendars.routes.js';
 
 const router = Router();
 
@@ -36,6 +37,7 @@ router.use('/preferences', preferencesRoutes);
 router.use('/chart', chartRoutes);
 router.use('/news', newsRoutes);
 router.use('/portfolio', portfolioRoutes);
+router.use('/calendars', calendarsRoutes);
 
 export default router;
 

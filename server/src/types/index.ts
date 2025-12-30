@@ -143,3 +143,43 @@ export interface PortfolioBalance {
   invested: number;
 }
 
+// Calendar Types
+export interface EconomicEvent {
+  id: string;
+  event: string;
+  country: string;
+  date: string; // ISO date string
+  time?: string; // Time in format "HH:MM"
+  impact: 'high' | 'medium' | 'low';
+  estimate?: number;
+  actual?: number;
+  previous?: number;
+  currency?: string;
+}
+
+export interface EarningsEvent {
+  id: string;
+  symbol: string;
+  name: string;
+  date: string; // ISO date string
+  time?: string; // "bmo" (before market open) or "amc" (after market close)
+  epsEstimate?: number;
+  epsActual?: number;
+  revenueEstimate?: number;
+  revenueActual?: number;
+  year?: number;
+  quarter?: number;
+}
+
+export interface IPOEvent {
+  id: string;
+  symbol: string;
+  name: string;
+  exchange: string;
+  date: string; // ISO date string
+  price?: number;
+  shares?: number;
+  totalValue?: number;
+  status: 'upcoming' | 'priced' | 'withdrawn';
+}
+

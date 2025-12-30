@@ -69,10 +69,17 @@ export function useUpdateStockWatchlist() {
   const { setWatchlistStocks } = useDashboardStore();
   
   return useMutation({
-    mutationFn: (params: WatchlistUpdateParams) => preferencesApi.updateStockWatchlist(params),
+    mutationFn: (params: WatchlistUpdateParams) => {
+      console.log('[PREFERENCES] Updating stock watchlist with params:', params);
+      return preferencesApi.updateStockWatchlist(params);
+    },
     onSuccess: (data) => {
+      console.log('[PREFERENCES] Stock watchlist updated successfully:', data);
       setWatchlistStocks(data.watchlistStocks);
       queryClient.invalidateQueries({ queryKey: preferencesKeys.user() });
+    },
+    onError: (error) => {
+      console.error('[PREFERENCES] Error updating stock watchlist:', error);
     },
   });
 }
@@ -85,10 +92,17 @@ export function useUpdateCryptoWatchlist() {
   const { setWatchlistCrypto } = useDashboardStore();
   
   return useMutation({
-    mutationFn: (params: WatchlistUpdateParams) => preferencesApi.updateCryptoWatchlist(params),
+    mutationFn: (params: WatchlistUpdateParams) => {
+      console.log('[PREFERENCES] Updating crypto watchlist with params:', params);
+      return preferencesApi.updateCryptoWatchlist(params);
+    },
     onSuccess: (data) => {
+      console.log('[PREFERENCES] Crypto watchlist updated successfully:', data);
       setWatchlistCrypto(data.watchlistCrypto);
       queryClient.invalidateQueries({ queryKey: preferencesKeys.user() });
+    },
+    onError: (error) => {
+      console.error('[PREFERENCES] Error updating crypto watchlist:', error);
     },
   });
 }

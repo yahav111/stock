@@ -82,3 +82,11 @@ export {
   portfolioKeys,
 } from './use-portfolio';
 
+// Calendars
+export {
+  useEconomicCalendar,
+  useEarningsCalendar,
+  useIPOCalendar,
+  useUpcomingEvents,
+} from './use-calendars';
+

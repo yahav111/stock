@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { env } from '../../config/env.js';
-import type { Stock, StockQuote } from '../../types/index.js';
+import type { Stock, StockQuote, IPOEvent } from '../../types/index.js';
 
 const POLYGON_BASE_URL = 'https://api.polygon.io';
 
@@ -720,4 +720,118 @@ function getMockSearchResults(query: string, limit: number): StockSearchResult[]
   );
 
   return filtered.slice(0, limit);
+}
+
+/**
+ * Get IPO Calendar from Polygon.io
+ * Endpoint: /v2/reference/ipos
+ * Free tier: Available with 2 years history
+ * @param from - Start date (YYYY-MM-DD)
+ * @param to - End date (YYYY-MM-DD)
+ */
+export async function getIPOCalendar(from?: string, to?: string): Promise<IPOEvent[]> {
+  const cacheKey = `polygon-ipo-${from || 'default'}-${to || 'default'}`;
+  const cached = getCached<IPOEvent[]>(cacheKey, 24 * 60 * 60 * 1000); // 24 hours cache
+  if (cached) {
+    console.log(`📦 [POLYGON] IPO calendar cache hit`);
+    return cached;
+  }
+
+  if (!env.POLYGON_API_KEY) {
+    console.warn('Polygon API key not configured for IPO calendar');
+    return [];
+  }
+
+  try {
+    await waitForRateLimit();
+
+    // Default: from (current) to (current + 6 months)
+    const today = new Date();
+    const defaultFrom = from || today.toISOString().split('T')[0];
+    const defaultTo = to || (() => {
+      const future = new Date(today);
+      future.setMonth(future.getMonth() + 6);
+      return future.toISOString().split('T')[0];
+    })();
+
+    const params: Record<string, string> = {
+      apiKey: env.POLYGON_API_KEY,
+      order: 'asc',
+      limit: '1000', // Max results
+    };
+
+    // Add date filters if provided
+    if (from) {
+      params['ipo_date.gte'] = defaultFrom;
+    }
+    if (to) {
+      params['ipo_date.lte'] = defaultTo;
+    }
+
+    const url = `${POLYGON_BASE_URL}/v2/reference/ipos`;
+    console.log(`🔍 [POLYGON] IPO Calendar API Call:`);
+    console.log(`   URL: ${url}`);
+    console.log(`   Params:`, { ...params, apiKey: '***REDACTED***' });
+    console.log(`   Date Range: ${defaultFrom} to ${defaultTo}`);
+
+    const response = await axios.get(url, {
+      params,
+      timeout: 10000,
+    });
+
+    console.log(`📥 [POLYGON] IPO Calendar Response Status:`, response.status);
+    console.log(`📥 [POLYGON] IPO Calendar Raw Response:`, JSON.stringify(response.data, null, 2));
+
+    if (response.status !== 200) {
+      console.error(`❌ [POLYGON] Unexpected status code: ${response.status}`);
+      return [];
+    }
+
+    const data = response.data;
+    
+    // Polygon returns: { status: 'OK', count: number, results: [...] }
+    let eventsArray: any[] = [];
+    if (data && data.results && Array.isArray(data.results)) {
+      eventsArray = data.results;
+      console.log(`✅ [POLYGON] Found ${eventsArray.length} IPO events`);
+    } else if (Array.isArray(data)) {
+      eventsArray = data;
+      console.log(`✅ [POLYGON] Using direct array (${eventsArray.length} items)`);
+    } else {
+      console.warn(`⚠️ [POLYGON] Unexpected response structure:`, data);
+    }
+
+    if (eventsArray.length === 0) {
+      console.log(`⚠️ [POLYGON] No IPO events found for ${defaultFrom} to ${defaultTo}`);
+      setCache(cacheKey, []);
+      return [];
+    }
+
+    const events: IPOEvent[] = eventsArray.map((item: any, index: number) => {
+      const dateStr = item.ipo_date || item.date || defaultFrom;
+
+      return {
+        id: `polygon-ipo-${dateStr}-${item.ticker || index}`,
+        symbol: item.ticker || item.symbol || 'UNKNOWN',
+        name: item.name || item.company_name || item.ticker || 'Unknown Company',
+        exchange: item.exchange || item.stock_exchange || 'NYSE',
+        date: dateStr,
+        price: item.price || item.ipo_price || undefined,
+        shares: item.shares || item.number_of_shares || undefined,
+        totalValue: item.total_value || item.market_value || (item.price && item.shares ? item.price * item.shares : undefined),
+        status: item.status === 'Priced' || item.status === 'priced' ? 'priced' : 
+                item.status === 'Withdrawn' || item.status === 'withdrawn' ? 'withdrawn' : 'upcoming',
+      };
+    });
+
+    setCache(cacheKey, events);
+    console.log(`✅ [POLYGON] Fetched ${events.length} IPO events (${defaultFrom} to ${defaultTo})`);
+    return events;
+  } catch (error: any) {
+    console.error(`❌ [POLYGON] Error fetching IPO calendar:`, error.message || error);
+    if (error.response) {
+      console.error(`   Response status: ${error.response.status}`, error.response.data);
+    }
+    return [];
+  }
 }

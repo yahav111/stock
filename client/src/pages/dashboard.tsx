@@ -9,19 +9,24 @@ import { CurrencyConverter } from "../components/widgets/currency-converter"
 import { MarketNewsCarousel } from "../components/widgets/market-news-carousel"
 import { TradingChart } from "../components/charts/trading-chart"
 import { Portfolio } from "../components/widgets/portfolio"
+import { UpcomingEventsPreview } from "../components/widgets/upcoming-events-preview"
 import { useWebSocket } from "../hooks/use-websocket"
 import { useDashboardStore } from "../stores/dashboard-store"
+import { usePreferences } from "../hooks/api/use-preferences"
 
 export function DashboardPage() {
   const { subscribeToStocks, subscribeToCrypto, isConnected } = useWebSocket()
   const { watchlistStocks, watchlistCrypto } = useDashboardStore()
   const [searchParams, setSearchParams] = useSearchParams()
 
+  // Load user preferences (including watchlist) from server on mount
+  usePreferences()
+
   // Get symbol from URL or default to AAPL
   const symbol = searchParams.get("symbol")?.toUpperCase() || "AAPL"
   const timeframe = searchParams.get("range") || "1D"
 
-  // Subscribe to watchlist symbols on mount
+  // Subscribe to watchlist symbols on mount and when watchlist changes
   useEffect(() => {
     if (isConnected) {
       subscribeToStocks(watchlistStocks)
@@ -72,6 +77,11 @@ export function DashboardPage() {
             {/* Watchlist - Stocks & Crypto */}
             <div className="lg:col-span-4">
               <Watchlist />
+            </div>
+
+            {/* Upcoming Events Preview */}
+            <div className="lg:col-span-4">
+              <UpcomingEventsPreview />
             </div>
 
             {/* Market News Carousel */}

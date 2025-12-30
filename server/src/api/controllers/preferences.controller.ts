@@ -120,39 +120,54 @@ export async function updateStockWatchlist(
   const authReq = req as AuthenticatedRequest;
   const { add, remove } = req.body;
   
+  console.log(`[PREFERENCES] updateStockWatchlist called for user ${authReq.user.id}:`, { add, remove });
+  
   const existingPrefs = await db.query.userPreferences.findFirst({
     where: eq(userPreferences.userId, authReq.user.id),
   });
+  
+  console.log(`[PREFERENCES] Existing preferences:`, existingPrefs ? { 
+    watchlistStocks: existingPrefs.watchlistStocks,
+    watchlistCrypto: existingPrefs.watchlistCrypto 
+  } : 'none');
   
   let currentWatchlist = existingPrefs?.watchlistStocks || [...defaultPreferences.watchlistStocks];
   
   // Remove specified symbols
   if (remove?.length) {
+    console.log(`[PREFERENCES] Removing symbols:`, remove);
     currentWatchlist = currentWatchlist.filter((s) => !remove.includes(s));
   }
   
   // Add specified symbols (avoid duplicates)
   if (add?.length) {
+    console.log(`[PREFERENCES] Adding symbols:`, add);
     const newSymbols = add.filter((s) => !currentWatchlist.includes(s));
     currentWatchlist = [...currentWatchlist, ...newSymbols];
+    console.log(`[PREFERENCES] New symbols added:`, newSymbols);
   }
   
   // Limit to 50 symbols
   currentWatchlist = currentWatchlist.slice(0, 50);
+  
+  console.log(`[PREFERENCES] Final watchlist:`, currentWatchlist);
   
   if (existingPrefs) {
     await db
       .update(userPreferences)
       .set({ watchlistStocks: currentWatchlist, updatedAt: new Date() })
       .where(eq(userPreferences.userId, authReq.user.id));
+    console.log(`[PREFERENCES] Updated existing preferences`);
   } else {
     await db.insert(userPreferences).values({
       userId: authReq.user.id,
       ...defaultPreferences,
       watchlistStocks: currentWatchlist,
     });
+    console.log(`[PREFERENCES] Created new preferences`);
   }
   
+  console.log(`[PREFERENCES] Successfully saved watchlist with ${currentWatchlist.length} stocks`);
   res.status(HttpStatus.OK).json(successResponse({ watchlistStocks: currentWatchlist }));
 }
 

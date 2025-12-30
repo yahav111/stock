@@ -134,6 +134,98 @@ function getCryptoName(symbol: string): string {
   return names[symbol] || symbol;
 }
 
+// Search result type
+export interface CryptoSearchResult {
+  symbol: string;
+  name: string;
+}
+
+// Search for cryptocurrencies using CryptoCompare coin list
+export async function searchCrypto(query: string, limit: number = 10): Promise<CryptoSearchResult[]> {
+  const cacheKey = `crypto-search:${query.toLowerCase()}`;
+  const cached = getCached<CryptoSearchResult[]>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    // CryptoCompare doesn't have a search endpoint, so we use the coin list
+    // and filter by name/symbol
+    const response = await axios.get(`${CRYPTOCOMPARE_BASE_URL}/data/all/coinlist`, {
+      params: {
+        api_key: env.CRYPTOCOMPARE_API_KEY,
+      },
+      timeout: 10000,
+    });
+
+    const coins = response.data.Data || {};
+    const queryLower = query.toLowerCase();
+    const results: CryptoSearchResult[] = [];
+
+    // Filter coins by symbol or name
+    for (const [symbol, coinData] of Object.entries(coins)) {
+      const coin = coinData as any;
+      const coinName = (coin.CoinName || '').toLowerCase();
+      const coinSymbol = symbol.toLowerCase();
+
+      if (
+        coinSymbol.includes(queryLower) ||
+        coinName.includes(queryLower)
+      ) {
+        results.push({
+          symbol: symbol.toUpperCase(),
+          name: coin.CoinName || symbol,
+        });
+
+        if (results.length >= limit) break;
+      }
+    }
+
+    // Sort: exact symbol matches first, then name matches
+    results.sort((a, b) => {
+      const aSymbolMatch = a.symbol.toLowerCase() === queryLower;
+      const bSymbolMatch = b.symbol.toLowerCase() === queryLower;
+      if (aSymbolMatch && !bSymbolMatch) return -1;
+      if (!aSymbolMatch && bSymbolMatch) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    setCache(cacheKey, results);
+    return results.slice(0, limit);
+  } catch (error) {
+    console.error('Error searching cryptocurrencies:', error);
+    // Return mock results on error
+    return getMockSearchResults(query, limit);
+  }
+}
+
+function getMockSearchResults(query: string, limit: number): CryptoSearchResult[] {
+  const mockCryptos: CryptoSearchResult[] = [
+    { symbol: 'BTC', name: 'Bitcoin' },
+    { symbol: 'ETH', name: 'Ethereum' },
+    { symbol: 'BNB', name: 'BNB' },
+    { symbol: 'SOL', name: 'Solana' },
+    { symbol: 'XRP', name: 'XRP' },
+    { symbol: 'ADA', name: 'Cardano' },
+    { symbol: 'DOGE', name: 'Dogecoin' },
+    { symbol: 'AVAX', name: 'Avalanche' },
+    { symbol: 'DOT', name: 'Polkadot' },
+    { symbol: 'MATIC', name: 'Polygon' },
+    { symbol: 'LINK', name: 'Chainlink' },
+    { symbol: 'UNI', name: 'Uniswap' },
+    { symbol: 'ATOM', name: 'Cosmos' },
+    { symbol: 'LTC', name: 'Litecoin' },
+    { symbol: 'BCH', name: 'Bitcoin Cash' },
+  ];
+
+  const queryLower = query.toLowerCase();
+  const filtered = mockCryptos.filter(
+    (crypto) =>
+      crypto.symbol.toLowerCase().includes(queryLower) ||
+      crypto.name.toLowerCase().includes(queryLower)
+  );
+
+  return filtered.slice(0, limit);
+}
+
 // Mock data for development
 function getMockCrypto(symbol: string): Cryptocurrency {
   const mockPrices: Record<string, number> = {

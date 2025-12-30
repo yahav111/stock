@@ -39,6 +39,7 @@ export { currenciesApi } from './currencies.api';
 export { authApi } from './auth.api';
 export { preferencesApi } from './preferences.api';
 export { portfolioApi } from './portfolio.api';
+export { calendarsApi } from './calendars.api';
 
 // Re-export types
 export type { GetStocksParams, GetHistoryParams, SearchParams as StockSearchParams, SearchResult as StockSearchResult } from './stocks.api';
@@ -55,6 +56,7 @@ import { currenciesApi } from './currencies.api';
 import { authApi } from './auth.api';
 import { preferencesApi } from './preferences.api';
 import { portfolioApi } from './portfolio.api';
+import { calendarsApi } from './calendars.api';
 
 export const api = {
   stocks: stocksApi,
@@ -63,5 +65,6 @@ export const api = {
   auth: authApi,
   preferences: preferencesApi,
   portfolio: portfolioApi,
+  calendars: calendarsApi,
 } as const;
 

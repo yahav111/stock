@@ -9,6 +9,7 @@ import {
   FileText,
   PlusCircle,
   ChevronDown,
+  Calendar,
 } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { Button } from "../ui/button"
@@ -112,6 +113,7 @@ export function Sidebar() {
             Tools
           </h3>
           <nav className="space-y-1">
+            <NavItem icon={Calendar} label="Calendars" href="/dashboard/calendars" />
             <NavItem icon={FileText} label="Documents" href="/dashboard/documents" />
             <NavItem icon={Settings} label="Settings" href="/dashboard/settings" />
           </nav>

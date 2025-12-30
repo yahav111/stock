@@ -21,6 +21,7 @@ const envSchema = z.object({
   FINNHUB_API_KEY: z.string().optional(),
   ALPHA_VANTAGE_API_KEY: z.string().optional(),
   TWELVE_DATA_API_KEY: z.string().optional(),
+  FMP_API_KEY: z.string().optional(),
 
   // Supabase (optional)
   SUPABASE_URL: z.string().url().optional(),
@@ -54,6 +55,7 @@ export const env = {
   FINNHUB_API_KEY: process.env.FINNHUB_API_KEY || '',
   ALPHA_VANTAGE_API_KEY: process.env.ALPHA_VANTAGE_API_KEY || '',
   TWELVE_DATA_API_KEY: process.env.TWELVE_DATA_API_KEY || '',
+  FMP_API_KEY: process.env.FMP_API_KEY || '',
   SUPABASE_URL: process.env.SUPABASE_URL || '',
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || '',
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
