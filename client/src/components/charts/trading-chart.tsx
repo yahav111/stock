@@ -9,6 +9,7 @@ import { cn, formatCurrency, formatPercentage } from "../../lib/utils"
 import { useDashboardStore } from "../../stores/dashboard-store"
 import { useChart, useForexChart } from "../../hooks/api"
 import { StockSearch } from "../common/stock-search"
+import { useDebounce } from "../../hooks/use-debounce"
 import type { Timeframe, HistoricalBar } from "../../types"
 
 // Supported forex currencies (same as stock-search.tsx)
@@ -62,6 +63,7 @@ export function TradingChart({
   showSearch = true,
   onSymbolChange 
 }: TradingChartProps) {
+  const [searchTerm, setSearchTerm] = useState(initialSymbol)
   const [symbol, setSymbol] = useState(initialSymbol)
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -71,19 +73,42 @@ export function TradingChart({
   const [isChartReady, setIsChartReady] = useState(false)
   const [lastUpdateDisplay, setLastUpdateDisplay] = useState("")
 
+  // Debounce the search term with 500ms delay
+  const debouncedSearchTerm = useDebounce(searchTerm, 500)
+
+  // Normalize debounced search term for chart queries
+  const debouncedSymbol = useMemo(() => {
+    if (!debouncedSearchTerm || debouncedSearchTerm.trim().length === 0) {
+      return null
+    }
+    return debouncedSearchTerm.trim().toUpperCase()
+  }, [debouncedSearchTerm])
+
+  // Update symbol state when debounced term changes (for display)
+  // This ensures chart queries are only triggered after user stops typing for 500ms
+  useEffect(() => {
+    if (debouncedSymbol && debouncedSymbol !== symbol) {
+      setSymbol(debouncedSymbol)
+      if (onSymbolChange) onSymbolChange(debouncedSymbol)
+    }
+  }, [debouncedSymbol, symbol, onSymbolChange])
+
+  // Use debouncedSymbol for chart queries to ensure sync with debounced input
+  const chartQuerySymbol = debouncedSymbol || symbol
+
   // Detect if symbol is forex (exclude USD as it's the base)
   const isForex = useMemo(() => {
-    const cleanSymbol = symbol.toUpperCase().replace(/^USD\//, '').trim()
+    const cleanSymbol = chartQuerySymbol.toUpperCase().replace(/^USD\//, '').trim()
     return cleanSymbol !== 'USD' && SUPPORTED_FOREX.includes(cleanSymbol as any)
-  }, [symbol])
+  }, [chartQuerySymbol])
 
   // Get current timeframe config
   const currentTimeframeConfig = timeframes.find(tf => tf.value === timeframe) || timeframes[5]
 
   // Get real-time stock data from dashboard store (updated via WebSocket)
   const { stocks, cryptos, isConnected } = useDashboardStore()
-  const stockData = stocks[symbol]
-  const cryptoData = cryptos[symbol]
+  const stockData = stocks[chartQuerySymbol]
+  const cryptoData = cryptos[chartQuerySymbol]
 
   // Map timeframe to range/interval for chart APIs
   const rangeMap: Record<Timeframe, '1D' | '1W' | '1M'> = {
@@ -111,15 +136,23 @@ export function TradingChart({
 
   // Use forex chart API if forex, otherwise unified chart API (stocks/crypto)
   const cleanSymbol = useMemo(() => {
-    return symbol.toUpperCase().replace(/^USD\//, '').trim()
-  }, [symbol])
+    return chartQuerySymbol.toUpperCase().replace(/^USD\//, '').trim()
+  }, [chartQuerySymbol])
+
+  // Chart queries are enabled only when:
+  // 1. We have a valid debounced search term (user stopped typing for 500ms)
+  // 2. The timeframe is available
+  // Previous requests are automatically aborted via AbortSignal when queryKey changes
+  const hasValidDebouncedTerm = debouncedSymbol !== null && debouncedSymbol.length >= 1
+  const chartEnabled = !isForex && currentTimeframeConfig.available && hasValidDebouncedTerm
+  const forexChartEnabled = isForex && (timeframe === '1d' || timeframe === '1w') && hasValidDebouncedTerm
 
   const { data: chartData, isLoading: isLoadingHistory, error: historyError } = useChart(
     {
       symbol: cleanSymbol,
       range: rangeMap[timeframe],
     },
-    !isForex && currentTimeframeConfig.available
+    chartEnabled
   );
 
   const { data: forexChartData, isLoading: isLoadingForex, error: forexError } = useForexChart(
@@ -127,7 +160,7 @@ export function TradingChart({
       symbol: cleanSymbol,
       interval: forexIntervalMap[timeframe],
     },
-    isForex && (timeframe === '1d' || timeframe === '1w')
+    forexChartEnabled
   );
 
   // Use forex data if forex, otherwise regular chart data
@@ -208,12 +241,17 @@ export function TradingChart({
   const dataTimestamp = wsData?.timestamp ?? (historyData?.[historyData.length - 1]?.time ? historyData[historyData.length - 1].time * 1000 : Date.now())
   const dataSource = isForex ? "Twelve Data" : (wsData ? "WebSocket" : activeChartData ? "API" : "Loading")
 
-  // Handle symbol change
-  const handleSymbolChange = (newSymbol: string) => {
-    if (newSymbol && newSymbol !== symbol) {
-      setSymbol(newSymbol)
-      if (onSymbolChange) onSymbolChange(newSymbol)
-    }
+  // Handle search input change (updates searchTerm, which will be debounced)
+  const handleSearchChange = (newSearchTerm: string) => {
+    setSearchTerm(newSearchTerm)
+  }
+
+  // Handle symbol selection (immediately update both searchTerm and symbol)
+  const handleSymbolSelect = (selectedSymbol: string) => {
+    const upperSymbol = selectedSymbol.toUpperCase()
+    setSearchTerm(upperSymbol)
+    setSymbol(upperSymbol)
+    if (onSymbolChange) onSymbolChange(upperSymbol)
   }
 
   // Update last update display
@@ -290,11 +328,13 @@ export function TradingChart({
     }
   }, [])
 
-  // Clear chart series immediately when symbol changes (before new data loads)
+  // Clear chart series immediately when debounced symbol changes (before new data loads)
+  // This ensures no stale data is rendered when user types a new symbol
   useEffect(() => {
     if (!chartRef.current || !isChartReady) return
 
-    // Clear the series immediately when symbol changes to prevent stale data rendering
+    // Clear the series immediately when debounced symbol changes to prevent stale data rendering
+    // This cleanup happens before the new query starts, preventing zombie requests
     if (seriesRef.current) {
       try {
         chartRef.current.removeSeries(seriesRef.current)
@@ -303,7 +343,7 @@ export function TradingChart({
         console.error("❌ Error clearing chart series:", error)
       }
     }
-  }, [symbol, cleanSymbol, isChartReady])
+  }, [debouncedSymbol, cleanSymbol, isChartReady])
 
   // Update chart with real historical data
   useEffect(() => {
@@ -457,9 +497,9 @@ export function TradingChart({
         {showSearch && (
           <div className="flex items-center gap-2">
             <StockSearch
-              value={symbol}
-              onChange={handleSymbolChange}
-              onSelect={handleSymbolChange}
+              value={searchTerm}
+              onChange={handleSearchChange}
+              onSelect={handleSymbolSelect}
               placeholder="Search symbol (e.g. AAPL, TSLA)"
               className="flex-1 max-w-xs"
             />

@@ -57,12 +57,13 @@ export function useDefaultCryptos() {
 
 /**
  * Hook to search cryptos
+ * Uses AbortController to cancel previous requests when a new search starts
  */
 export function useCryptoSearch(params: CryptoSearchParams, enabled = true) {
   return useQuery({
     queryKey: cryptoKeys.search(params),
-    queryFn: () => cryptoApi.search(params),
-    enabled: params.q.length >= 1 && enabled,
+    queryFn: ({ signal }) => cryptoApi.search(params, signal),
+    enabled: params.q.length >= 2 && enabled,
     staleTime: 5 * 60 * 1000,
   });
 }

@@ -34,11 +34,11 @@ export interface ForexChartDataResponse {
 /**
  * Get unified chart data (stocks or crypto)
  */
-export async function getChartData(params: ChartDataParams): Promise<ChartDataResponse> {
+export async function getChartData(params: ChartDataParams, signal?: AbortSignal): Promise<ChartDataResponse> {
   const { symbol, range = '1D' } = params;
   const response = await apiClient.get<ApiSuccessResponse<ChartDataResponse>>(
     '/chart',
-    { params: { symbol, range } }
+    { params: { symbol, range }, signal }
   );
   return unwrapResponse(response.data);
 }
@@ -46,11 +46,11 @@ export async function getChartData(params: ChartDataParams): Promise<ChartDataRe
 /**
  * Get forex chart data (always relative to USD)
  */
-export async function getForexChartData(params: ForexChartDataParams): Promise<ForexChartDataResponse> {
+export async function getForexChartData(params: ForexChartDataParams, signal?: AbortSignal): Promise<ForexChartDataResponse> {
   const { symbol, interval = '1day' } = params;
   const response = await apiClient.get<ApiSuccessResponse<ForexChartDataResponse>>(
     `/chart/forex/${encodeURIComponent(symbol.toUpperCase())}`,
-    { params: { interval } }
+    { params: { interval }, signal }
   );
   return unwrapResponse(response.data);
 }

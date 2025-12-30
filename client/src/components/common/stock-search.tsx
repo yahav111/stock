@@ -5,6 +5,7 @@ import { Button } from "../ui/button"
 import { Badge } from "../ui/badge"
 import { cn } from "../../lib/utils"
 import { useStockSearch } from "../../hooks/api"
+import { useDebounce } from "../../hooks/use-debounce"
 
 interface StockSearchProps {
   value: string
@@ -104,6 +105,9 @@ export function StockSearch({
   const [query, setQuery] = useState(value)
   const searchRef = useRef<HTMLDivElement>(null)
 
+  // Debounce the search query with 500ms delay
+  const debouncedQuery = useDebounce(query, 500)
+
   // Check if query matches a supported crypto
   const isCryptoMatch = useMemo(() => {
     const upperQuery = query.toUpperCase().trim();
@@ -118,10 +122,14 @@ export function StockSearch({
   }, [query]);
 
   // Fetch stock search results (only if not exact crypto or forex match)
-  const { data: searchResults, isLoading } = useStockSearch(
-    { q: query, limit: 8 },
-    query.length >= 1 && isOpen && !isCryptoMatch && !isForexMatch
+  // Query is enabled when debounced query has at least 2 characters
+  const { data: searchResults, isLoading, isFetching } = useStockSearch(
+    { q: debouncedQuery, limit: 8 },
+    debouncedQuery.length >= 2 && isOpen && !isCryptoMatch && !isForexMatch
   )
+
+  // Show loading state during debounce or fetch
+  const isSearching = (query.length >= 2 && query !== debouncedQuery) || isFetching
 
   // Get recently viewed from localStorage
   const recentlyViewed = showRecentlyViewed ? getRecentlyViewed() : []
@@ -276,7 +284,7 @@ export function StockSearch({
             {/* Search Results - Stocks */}
             {query && !isCryptoMatch && !isForexMatch && (
               <div className="py-1">
-                {isLoading && (
+                {isSearching && (
                   <div className="px-4 py-8 text-sm text-muted-foreground text-center">
                     <div className="inline-flex items-center gap-2">
                       <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -285,7 +293,7 @@ export function StockSearch({
                   </div>
                 )}
 
-                {!isLoading && searchResults && searchResults.length > 0 && (
+                {!isSearching && searchResults && searchResults.length > 0 && (
                   <>
                     <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border/50">
                       <Search className="w-3.5 h-3.5" />
@@ -326,7 +334,7 @@ export function StockSearch({
                   </>
                 )}
 
-                {!isLoading && searchResults && searchResults.length === 0 && (
+                {!isSearching && searchResults && searchResults.length === 0 && (
                   <div className="px-4 py-8 text-center">
                     <div className="text-sm text-muted-foreground mb-1">
                       No results found

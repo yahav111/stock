@@ -86,12 +86,13 @@ export function useStockDetails(symbol: string, enabled = true) {
 
 /**
  * Hook to search stocks
+ * Uses AbortController to cancel previous requests when a new search starts
  */
 export function useStockSearch(params: StockSearchParams, enabled = true) {
   return useQuery({
     queryKey: stocksKeys.search(params),
-    queryFn: () => stocksApi.search(params),
-    enabled: params.q.length >= 1 && enabled,
+    queryFn: ({ signal }) => stocksApi.search(params, signal),
+    enabled: params.q.length >= 2 && enabled,
     staleTime: 5 * 60 * 1000,
   });
 }

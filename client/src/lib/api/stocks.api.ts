@@ -93,10 +93,10 @@ export async function getDetails(symbol: string): Promise<StockDetails> {
 /**
  * Search for stocks
  */
-export async function search(params: SearchParams): Promise<SearchResult[]> {
+export async function search(params: SearchParams, signal?: AbortSignal): Promise<SearchResult[]> {
   const response = await apiClient.get<ApiSuccessResponse<SearchResult[]>>(
     '/stocks/search',
-    { params }
+    { params, signal }
   );
   return unwrapResponse(response.data);
 }

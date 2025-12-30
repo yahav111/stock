@@ -9,6 +9,7 @@ import { cn, formatCurrency, formatPercentage, getChangeColor } from "../../lib/
 import { useDashboardStore } from "../../stores/dashboard-store"
 import { usePreferences, useAddToStockWatchlist, useAddToCryptoWatchlist } from "../../hooks/api/use-preferences"
 import { useStockSearch, useCryptoSearch } from "../../hooks/api"
+import { useDebounce } from "../../hooks/use-debounce"
 
 interface WatchlistItemProps {
   symbol: string
@@ -63,8 +64,10 @@ export function Watchlist() {
   const [newSymbol, setNewSymbol] = useState("")
   const [activeTab, setActiveTab] = useState("stocks")
   const [isSearchOpen, setIsSearchOpen] = useState(false)
-  const [debouncedQuery, setDebouncedQuery] = useState("")
   const searchRef = useRef<HTMLDivElement>(null)
+  
+  // Debounce search query (500ms)
+  const debouncedQuery = useDebounce(newSymbol, 500)
   
   // Load preferences from server on mount
   const { isLoading: isLoadingPrefs } = usePreferences()
@@ -92,24 +95,15 @@ export function Watchlist() {
     }
   }, [stockError, cryptoError])
 
-  // Debounce search query (300ms)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(newSymbol)
-    }, 300)
-
-    return () => clearTimeout(timer)
-  }, [newSymbol])
-
-  // Search hooks with debounced query
-  const { data: stockSearchResults, isLoading: isSearchingStocks } = useStockSearch(
+  // Search hooks with debounced query (requires at least 2 characters)
+  const { data: stockSearchResults, isFetching: isFetchingStocks } = useStockSearch(
     { q: debouncedQuery, limit: 8 },
-    debouncedQuery.length >= 1 && isSearchOpen && activeTab === "stocks"
+    debouncedQuery.length >= 2 && isSearchOpen && activeTab === "stocks"
   )
 
-  const { data: cryptoSearchResults, isLoading: isSearchingCrypto } = useCryptoSearch(
+  const { data: cryptoSearchResults, isFetching: isFetchingCrypto } = useCryptoSearch(
     { q: debouncedQuery, limit: 8 },
-    debouncedQuery.length >= 1 && isSearchOpen && activeTab === "crypto"
+    debouncedQuery.length >= 2 && isSearchOpen && activeTab === "crypto"
   )
 
   // Close dropdown on outside click
@@ -215,7 +209,11 @@ export function Watchlist() {
     return []
   }, [activeTab, stockSearchResults, cryptoSearchResults])
 
-  const isSearching = isSearchingStocks || isSearchingCrypto
+  // Show loading state during debounce or fetch
+  const isSearching = 
+    (newSymbol.length >= 2 && newSymbol !== debouncedQuery) || 
+    isFetchingStocks || 
+    isFetchingCrypto
 
   // Placeholder data for demonstration
   const stocksData = watchlistStocks.map((symbol) => ({
@@ -289,7 +287,7 @@ export function Watchlist() {
             </div>
 
             {/* Autocomplete Dropdown */}
-            {isSearchOpen && debouncedQuery.length >= 1 && (
+            {isSearchOpen && debouncedQuery.length >= 2 && (
               <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-md shadow-xl max-h-[300px] overflow-hidden">
                 <div className="overflow-y-auto max-h-[300px]">
                   {isSearching ? (

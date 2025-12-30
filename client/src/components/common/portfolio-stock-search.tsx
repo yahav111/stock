@@ -3,6 +3,7 @@ import { Search, TrendingUp, Loader2 } from "lucide-react"
 import { Input } from "../ui/input"
 import { cn } from "../../lib/utils"
 import { useStockSearch } from "../../hooks/api"
+import { useDebounce } from "../../hooks/use-debounce"
 
 interface PortfolioStockSearchProps {
   value: string
@@ -56,18 +57,11 @@ export function PortfolioStockSearch({
 }: PortfolioStockSearchProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState(value)
-  const [debouncedQuery, setDebouncedQuery] = useState(value)
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(value || null)
   const searchRef = useRef<HTMLDivElement>(null)
 
-  // Debounce query for API calls (300ms)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(query)
-    }, 300)
-
-    return () => clearTimeout(timer)
-  }, [query])
+  // Debounce query for API calls (500ms)
+  const debouncedQuery = useDebounce(query, 500)
 
   // Check if query matches a popular stock locally
   const localMatch = useMemo(() => {
@@ -90,11 +84,14 @@ export function PortfolioStockSearch({
   }, [query])
 
   // Fetch from API only if query is more than 2 characters and no local match
-  const shouldFetchAPI = debouncedQuery.length > 2 && !localMatch
-  const { data: apiResults, isLoading } = useStockSearch(
+  const shouldFetchAPI = debouncedQuery.length >= 2 && !localMatch
+  const { data: apiResults, isLoading, isFetching } = useStockSearch(
     { q: debouncedQuery, limit: 10 },
     shouldFetchAPI && isOpen
   )
+
+  // Show loading state during debounce or fetch
+  const isSearching = (query.length >= 2 && query !== debouncedQuery) || isFetching
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -174,7 +171,7 @@ export function PortfolioStockSearch({
           )}
           autoComplete="off"
         />
-        {isLoading && (
+        {isSearching && (
           <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground animate-spin" />
         )}
       </div>
@@ -245,7 +242,7 @@ export function PortfolioStockSearch({
             {/* API Search Results */}
             {shouldFetchAPI && (
               <div className="py-1">
-                {isLoading && (
+                {isSearching && (
                   <div className="px-4 py-8 text-sm text-muted-foreground text-center">
                     <div className="inline-flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -254,7 +251,7 @@ export function PortfolioStockSearch({
                   </div>
                 )}
 
-                {!isLoading && apiResults && apiResults.length > 0 && (
+                {!isSearching && apiResults && apiResults.length > 0 && (
                   <>
                     <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border/50">
                       <Search className="w-3.5 h-3.5" />
@@ -289,7 +286,7 @@ export function PortfolioStockSearch({
                   </>
                 )}
 
-                {!isLoading && apiResults && apiResults.length === 0 && debouncedQuery.length > 2 && (
+                {!isSearching && apiResults && apiResults.length === 0 && debouncedQuery.length >= 2 && (
                   <div className="px-4 py-8 text-center">
                     <div className="text-sm text-muted-foreground mb-1">
                       No results found

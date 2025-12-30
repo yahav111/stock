@@ -63,10 +63,10 @@ export async function getDefaults(): Promise<Cryptocurrency[]> {
 /**
  * Search for cryptocurrencies
  */
-export async function search(params: SearchParams): Promise<SearchResult[]> {
+export async function search(params: SearchParams, signal?: AbortSignal): Promise<SearchResult[]> {
   const response = await apiClient.get<ApiSuccessResponse<SearchResult[]>>(
     '/crypto/search',
-    { params }
+    { params, signal }
   );
   return unwrapResponse(response.data);
 }

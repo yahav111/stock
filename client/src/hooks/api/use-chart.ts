@@ -14,6 +14,7 @@ export const chartKeys = {
 /**
  * Hook to get unified chart data (stocks or crypto)
  * Automatically refetches when params change (symbol, range)
+ * Uses AbortController to cancel previous requests when a new search starts
  */
 export function useChart(params: ChartDataParams, enabled = true) {
   // Calculate staleTime based on range for dynamic updates
@@ -25,7 +26,7 @@ export function useChart(params: ChartDataParams, enabled = true) {
 
   return useQuery({
     queryKey: chartKeys.chart(params),
-    queryFn: () => chartApi.getChartData(params),
+    queryFn: ({ signal }) => chartApi.getChartData(params, signal),
     enabled: !!params.symbol && enabled,
     staleTime,
     gcTime: 2 * 60 * 60 * 1000, // 2 hours
@@ -47,6 +48,7 @@ export function useChart(params: ChartDataParams, enabled = true) {
 /**
  * Hook to get forex chart data
  * Automatically refetches when params change (symbol, interval)
+ * Uses AbortController to cancel previous requests when a new search starts
  */
 export function useForexChart(params: ForexChartDataParams, enabled = true) {
   // Calculate staleTime based on interval
@@ -56,7 +58,7 @@ export function useForexChart(params: ForexChartDataParams, enabled = true) {
 
   return useQuery({
     queryKey: chartKeys.forexChart(params),
-    queryFn: () => chartApi.getForexChartData(params),
+    queryFn: ({ signal }) => chartApi.getForexChartData(params, signal),
     enabled: !!params.symbol && enabled,
     staleTime,
     gcTime: 10 * 60 * 1000, // 10 minutes
